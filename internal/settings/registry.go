@@ -30,7 +30,7 @@ const (
 )
 
 // Groups lists the setting groups in display order.
-var Groups = []string{"logins", "switching", "profit", "timeouts", "limits", "tls", "history", "logging"}
+var Groups = []string{"logins", "switching", "profit", "timed", "timeouts", "limits", "tls", "history", "logging"}
 
 // Values is an immutable snapshot of all runtime settings.
 type Values struct {
@@ -55,6 +55,9 @@ type Values struct {
 	ProfitSwitch          string
 	ProfitInterval        time.Duration
 	ProfitMargin          int
+	TimedSwitch           string
+	TimedPeriod           time.Duration
+	TimedDuration         time.Duration
 	LogLevel              string
 }
 
@@ -63,6 +66,12 @@ const (
 	ProfitOff    = "off"
 	ProfitAdvise = "advise" // compute and report, never switch
 	ProfitAuto   = "auto"
+)
+
+// Timed switching modes.
+const (
+	TimedOff = "off"
+	TimedOn  = "on"
 )
 
 func (v *Values) MaxLineBytes() int { return v.MaxLineKiB * 1024 }
@@ -176,6 +185,27 @@ var Defs = []Def{
 		Default: 5, Min: 0, Max: 50,
 		Applies: AppliesImmediately,
 	}, num(func(v *Values) *int { return &v.ProfitMargin })),
+
+	// Timed switching: for timed_duration at the start of every timed_period
+	// the farm mines on the pool marked in the pool editor (e.g. a solo
+	// pool), then returns.
+	def(Def{
+		Key: "timed_switch", Group: "timed", Type: TypeEnum,
+		Default: TimedOff, Options: []string{TimedOff, TimedOn},
+		Applies: AppliesImmediately,
+	}, str(func(v *Values) *string { return &v.TimedSwitch })),
+
+	def(Def{
+		Key: "timed_period", Group: "timed", Type: TypeDuration,
+		Default: 30 * minute, Min: 10 * minute, Max: 24 * time.Hour,
+		Applies: AppliesImmediately,
+	}, dur(func(v *Values) *time.Duration { return &v.TimedPeriod })),
+
+	def(Def{
+		Key: "timed_duration", Group: "timed", Type: TypeDuration,
+		Default: 10 * minute, Min: 1 * minute, Max: 12 * time.Hour,
+		Applies: AppliesImmediately,
+	}, dur(func(v *Values) *time.Duration { return &v.TimedDuration })),
 
 	def(Def{
 		Key: "tls_handshake_timeout", Group: "timeouts", Type: TypeDuration,
@@ -308,6 +338,10 @@ func crossCheck(v *Values) map[string]apierr.Msg {
 	if v.MaxPendingConnections > v.MaxConnections {
 		errs["max_pending_connections"] = apierr.M("setting_pending_above_total",
 			"must not be more than max_connections")
+	}
+	if v.TimedDuration >= v.TimedPeriod {
+		errs["timed_duration"] = apierr.M("setting_timed_duration",
+			"must be shorter than timed_period ({period})", "period", FormatDuration(v.TimedPeriod))
 	}
 	// The hourly tiers must outlive the detailed ones: ranges longer than
 	// three days are read from the hourly points only.

@@ -107,8 +107,9 @@ p {
   overflow-wrap: anywhere;
 }
 
+/* A pool error in the pools table; the full text is in the tooltip. */
 .clip {
-  max-width: 280px;
+  max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

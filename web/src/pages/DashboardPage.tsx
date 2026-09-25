@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
-import { useEvents, useHistory, usePools, useProfit, useStatus } from '../api/queries'
+import { useEvents, useHistory, usePools, useProfit, useStatus, useTimed } from '../api/queries'
 import type { ConnString, Pool, Status } from '../api/types'
 import { HealthBadge, ModeBadge } from '../components/Badges'
 import { CopyButton } from '../components/CopyButton'
@@ -15,7 +15,8 @@ import { TestDialog } from '../features/pools/TestDialog'
 import { usePoolActions } from '../features/pools/usePoolActions'
 import { href } from '../hooks/useHashRoute'
 import { locale } from '../i18n'
-import { formatDateTime, formatHashrate, formatHashrateHs, formatInt, formatPercent } from '../lib/format'
+import { parseGoDuration } from '../lib/duration'
+import { formatDateTime, formatDuration, formatHashrate, formatHashrateHs, formatInt, formatPercent, formatTime } from '../lib/format'
 import { EventList } from './EventsPage'
 
 function StatusCards({ status, pools }: { status: Status; pools: Pool[] }) {
@@ -79,6 +80,35 @@ function ProfitSection(props: { pools: Pool[]; hashrateTHs: number; onSwitch: (p
       <h2>{t('profit.title')}</h2>
       <ProfitPanel status={profit.data} {...props} />
     </>
+  )
+}
+
+/** Timed switching, shown only when it is on. */
+function TimedPanel({ pools }: { pools: Pool[] }) {
+  const { t } = useTranslation()
+  const loc = locale()
+  const timed = useTimed()
+  const s = timed.data
+  if (!s || s.mode === 'off') return null
+  const name = (id: string) => pools.find((p) => p.id === id)?.name ?? id
+  let text: string
+  if (!s.target) {
+    text = t('timed.noTarget')
+  } else if (s.home && s.until) {
+    text = t('timed.now', { pool: name(s.target), until: formatTime(s.until, loc), home: name(s.home) })
+  } else {
+    text = t('timed.plan', {
+      pool: name(s.target),
+      length: formatDuration(parseGoDuration(s.duration), t),
+      every: formatDuration(parseGoDuration(s.period), t),
+      next: formatTime(s.next, loc),
+    })
+  }
+  return (
+    <div className="panel timed">
+      <span className={s.home ? 'badge accent' : 'badge'}>{t('timed.badge')}</span> {text}
+      {s.error && <div className="warnbox">{t('timed.failed', { error: s.error })}</div>}
+    </div>
   )
 }
 
@@ -185,6 +215,7 @@ export function DashboardPage() {
           ) : (
             <div className="panel muted">{t('dashboard.noPools')}</div>
           )}
+          <TimedPanel pools={pools.data} />
 
           <ProfitSection pools={pools.data} hashrateTHs={status.data.hashrate_ths} onSwitch={(p) => void actions.switchPool(p)} />
 

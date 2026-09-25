@@ -44,6 +44,7 @@ export function PoolEditor({ pool, onClose }: { pool: Pool | null; onClose: () =
   const [password, setPassword] = useState(pool ? '' : 'x')
   const [reconnect, setReconnect] = useState(false)
   const [profitSwitch, setProfitSwitch] = useState(pool?.profit_switch ?? false)
+  const [timedTarget, setTimedTarget] = useState(pool?.timed_target ?? false)
   const [errors, setErrors] = useState<Errors>({})
   const [schemeNote, setSchemeNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -77,6 +78,7 @@ export function PoolEditor({ pool, onClose }: { pool: Pool | null; onClose: () =
       tls_skip_verify: tls && skipVerify,
       username,
       profit_switch: profitSwitch,
+      timed_target: timedTarget,
     }
     if (changePassword) body.password = password
     return body
@@ -226,6 +228,14 @@ export function PoolEditor({ pool, onClose }: { pool: Pool | null; onClose: () =
             {t('editor.profitSwitch')}
           </label>
           <div className="small muted">{t('editor.profitHelp')}</div>
+        </div>
+        <span className="form-label">{t('editor.timed')}</span>
+        <div className="form-field">
+          <label>
+            <input type="checkbox" checked={timedTarget} onChange={(e) => setTimedTarget(e.target.checked)} />{' '}
+            {t('editor.timedTarget')}
+          </label>
+          <div className="small muted">{t('editor.timedHelp')}</div>
         </div>
         {pool && pool.sessions > 0 && (
           <>

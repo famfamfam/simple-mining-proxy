@@ -242,6 +242,31 @@ func TestNextRun(t *testing.T) {
 	}
 }
 
+// While timed switching holds the farm on its target, coins are compared
+// for the pool it returns to, and the scheduled check waits.
+func TestTimedTargetHoldsChecks(t *testing.T) {
+	solo := poolOf("solo", "BTC", false) // active now, does not take part
+	e := newEnv(t, market(0.10), nil, solo, poolOf("btc", "BTC", true), poolOf("bch", "BCH", true))
+	e.auto(t)
+	home := "btc"
+	e.sw.d.Home = func() string { return home }
+	e.sw.started = now.Add(-time.Hour)
+
+	if e.sw.due(e.set.Get(), now) {
+		t.Fatal("scheduled check runs while on the timed target")
+	}
+	if rep := e.sw.Check(context.Background(), false); rep.Active != "btc" || rep.Decision != Recommend || rep.Target != "bch" {
+		t.Fatalf("check on the timed target: %+v", rep)
+	}
+	home = ""
+	if !e.sw.due(e.set.Get(), now) {
+		t.Fatal("scheduled check not due once the farm is back")
+	}
+	if rep := e.sw.Check(context.Background(), false); rep.Decision != Manual {
+		t.Fatalf("without the timer the solo pool is left alone: %+v", rep)
+	}
+}
+
 func TestNoMarketData(t *testing.T) {
 	e := newEnv(t, nil, errors.New("timeout"), poolOf("btc", "BTC", true))
 	rep := e.sw.Check(context.Background(), true)

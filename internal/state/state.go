@@ -50,6 +50,9 @@ type Pool struct {
 	Password      string    `json:"password"`
 	// ProfitSwitch lets profit switching choose this pool.
 	ProfitSwitch bool `json:"profit_switch,omitempty"`
+	// TimedTarget is the pool timed switching moves the farm to for part of
+	// every period, e.g. a solo pool. At most one pool has it.
+	TimedTarget bool `json:"timed_target,omitempty"`
 }
 
 // UnmarshalJSON also reads the version-1 form with a single host and port.

@@ -75,6 +75,10 @@ type Deps struct {
 	Events   *events.Log
 	Fetch    Fetcher
 	Path     string // state file, e.g. /data/profit.json
+	// Home, when set, reports the pool timed switching returns to while the
+	// farm is on its target for a while, "" otherwise. Coins are compared
+	// for that pool, and scheduled checks wait until the farm is back.
+	Home func() string
 }
 
 type Switcher struct {
@@ -160,6 +164,13 @@ func (s *Switcher) nextRunLocked(v *settings.Values) time.Time {
 	return next
 }
 
+func (s *Switcher) home() string {
+	if s.d.Home == nil {
+		return ""
+	}
+	return s.d.Home()
+}
+
 // Run checks on schedule until ctx is done.
 func (s *Switcher) Run(ctx context.Context) {
 	s.mu.Lock()
@@ -173,15 +184,20 @@ func (s *Switcher) Run(ctx context.Context) {
 			return
 		case <-tick.C:
 		}
-		v := s.d.Settings.Get()
-		now := s.now()
-		s.mu.Lock()
-		due := v.ProfitSwitch != settings.ProfitOff && !now.Before(s.nextRunLocked(v))
-		s.mu.Unlock()
-		if due {
+		if s.due(s.d.Settings.Get(), s.now()) {
 			s.Check(ctx, true)
 		}
 	}
+}
+
+// due reports whether the scheduled check should run now.
+func (s *Switcher) due(v *settings.Values, now time.Time) bool {
+	if v.ProfitSwitch == settings.ProfitOff || s.home() != "" {
+		return false // off, or on the timed target: check once the farm is back
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return !now.Before(s.nextRunLocked(v))
 }
 
 // Check compares the coins now. A scheduled check follows the mode: in auto
@@ -278,7 +294,11 @@ func (s *Switcher) decide(rep *Report, m *Market) {
 	}
 	sort.Slice(rep.Coins, func(i, j int) bool { return rep.Coins[i].RevenueBTC > rep.Coins[j].RevenueBTC })
 
-	active, ok := snap.Get(snap.Active)
+	activeID := snap.Active
+	if home := s.home(); home != "" {
+		activeID = home // on the timed target for a while: compare for the pool the farm returns to
+	}
+	active, ok := snap.Get(activeID)
 	if !ok {
 		rep.Decision = NoCandidates
 		return

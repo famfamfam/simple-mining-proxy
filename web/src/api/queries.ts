@@ -11,6 +11,7 @@ export const keys = {
   miners: ['miners'] as const,
   events: (limit: number) => ['events', limit] as const,
   settings: ['settings'] as const,
+  timed: ['timed'] as const,
 }
 
 export const useStatus = () => useQuery({ queryKey: keys.status, queryFn: api.status, refetchInterval: POLL_MS })
@@ -52,6 +53,8 @@ export const useWorkers = (seconds: number) =>
 
 export const useProfit = () => useQuery({ queryKey: ['profit'], queryFn: api.profit, refetchInterval: HISTORY_POLL_MS })
 
+export const useTimed = () => useQuery({ queryKey: keys.timed, queryFn: api.timed, refetchInterval: POLL_MS })
+
 // Settings are edited in place: loaded when the screen opens, never polled.
 export const useSettings = () =>
   useQuery({ queryKey: keys.settings, queryFn: api.settings, refetchOnWindowFocus: false })
@@ -62,6 +65,7 @@ export function useRefreshLive() {
   return () => {
     void qc.invalidateQueries({ queryKey: keys.status })
     void qc.invalidateQueries({ queryKey: keys.pools })
+    void qc.invalidateQueries({ queryKey: keys.timed })
     void qc.invalidateQueries({ queryKey: ['events'] })
   }
 }

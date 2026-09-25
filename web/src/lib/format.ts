@@ -60,6 +60,12 @@ export function formatDateTime(iso: string | null | undefined, locale: string): 
   return `${d.toLocaleDateString(locale, { day: '2-digit', month: '2-digit' })} ${d.toLocaleTimeString(locale)}`
 }
 
+/** Hours and minutes only: "14:30". */
+export function formatTime(iso: string | null | undefined, locale: string): string {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
+}
+
 export function formatDate(iso: string, locale: string): string {
   return new Date(iso).toLocaleDateString(locale)
 }

@@ -64,6 +64,11 @@ export function PoolsTable({ pools, onSwitch, onTest, onEdit, onDelete }: PoolsT
                   <span className="badge" title={t('pools.profitSwitchHint')}>
                     {t('pools.profitSwitch')}
                   </span>
+                )}{' '}
+                {p.timed_target && (
+                  <span className="badge" title={t('pools.timedTargetHint')}>
+                    {t('pools.timedTarget')}
+                  </span>
                 )}
                 <AddressList pool={p} />
               </td>

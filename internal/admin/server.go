@@ -24,6 +24,7 @@ import (
 	"github.com/famfamfam/simple-mining-proxy/internal/settings"
 	"github.com/famfamfam/simple-mining-proxy/internal/state"
 	"github.com/famfamfam/simple-mining-proxy/internal/stats"
+	"github.com/famfamfam/simple-mining-proxy/internal/timed"
 	"github.com/famfamfam/simple-mining-proxy/internal/tlsutil"
 	"github.com/famfamfam/simple-mining-proxy/web"
 )
@@ -37,6 +38,7 @@ type Deps struct {
 	Stats    *stats.Collector
 	History  *history.Recorder
 	Profit   *profit.Switcher
+	Timed    *timed.Switcher
 	Events   *events.Log
 	Certs    *tlsutil.Certs // nil when the TLS listener is off
 	Started  time.Time
@@ -73,6 +75,7 @@ func New(d Deps) http.Handler {
 	api("GET /api/history/workers", s.historyWorkers)
 	api("GET /api/profit", s.profitStatus)
 	api("POST /api/profit/check", s.profitCheck)
+	api("GET /api/timed", s.timedStatus)
 	api("GET /api/pools", s.listPools)
 	api("POST /api/pools", s.createPool)
 	api("PUT /api/pools/{id}", s.updatePool)
@@ -426,6 +429,13 @@ func (s *Server) profitCheck(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
+// ---- timed switching ----
+
+func (s *Server) timedStatus(w http.ResponseWriter, r *http.Request) error {
+	writeJSON(w, http.StatusOK, s.d.Timed.Status())
+	return nil
+}
+
 // ---- pools ----
 
 type poolView struct {
@@ -438,6 +448,7 @@ type poolView struct {
 	Username         string     `json:"username"`
 	PasswordSet      bool       `json:"password_set"`
 	ProfitSwitch     bool       `json:"profit_switch"`
+	TimedTarget      bool       `json:"timed_target"`
 	Role             string     `json:"role"`
 	FallbackPosition int        `json:"fallback_position,omitempty"`
 	Health           string     `json:"health"`
@@ -477,7 +488,7 @@ func (s *Server) poolView(p state.Pool, snap *pool.Snapshot, counts session.Coun
 	h := s.d.Pools.Health(p.ID)
 	v := poolView{
 		ID: p.ID, Name: p.Name, Coin: p.Coin, TLS: p.TLS,
-		TLSSkipVerify: p.TLSSkipVerify, Username: p.Username, PasswordSet: p.Password != "", ProfitSwitch: p.ProfitSwitch,
+		TLSSkipVerify: p.TLSSkipVerify, Username: p.Username, PasswordSet: p.Password != "", ProfitSwitch: p.ProfitSwitch, TimedTarget: p.TimedTarget,
 		Health: string(h.Status), Sessions: counts.ByPool[p.ID],
 		Accepted: st.ByPool[p.ID].Accepted, Rejected: st.ByPool[p.ID].Rejected,
 		HashrateTHs: st.PoolHashrateHs[p.ID] / 1e12,

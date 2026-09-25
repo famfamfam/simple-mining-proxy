@@ -14,6 +14,7 @@ import type {
   SettingValue,
   Status,
   TestResult,
+  TimedStatus,
   WorkerSeries,
   WorkerSummary,
 } from './types'
@@ -105,6 +106,7 @@ export const api = {
   profit: () => request<ProfitStatus>('GET', 'api/profit'),
   /** Compares the coins now; never switches. */
   profitCheck: () => request<ProfitStatus>('POST', 'api/profit/check'),
+  timed: () => request<TimedStatus>('GET', 'api/timed'),
 
   settings: () => request<SettingsPayload>('GET', 'api/settings'),
   /** null resets a setting to its default. */

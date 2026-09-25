@@ -28,6 +28,7 @@ import (
 	"github.com/famfamfam/simple-mining-proxy/internal/settings"
 	"github.com/famfamfam/simple-mining-proxy/internal/state"
 	"github.com/famfamfam/simple-mining-proxy/internal/stats"
+	"github.com/famfamfam/simple-mining-proxy/internal/timed"
 	"github.com/famfamfam/simple-mining-proxy/internal/tlsutil"
 )
 
@@ -118,9 +119,11 @@ func run() error {
 	}
 	set.OnChange(func(*settings.Values) { go hist.Prune() })
 
+	timedSw := timed.New(timed.Deps{Settings: set, Pools: mgr, Events: ev, Path: filepath.Join(cfg.DataDir, "timed.json")})
 	profitSw := profit.New(profit.Deps{
 		Settings: set, Pools: mgr, Events: ev, Path: filepath.Join(cfg.DataDir, "profit.json"),
 		Fetch: profit.WhatToMine(&http.Client{}, profit.WhatToMineURL),
+		Home:  timedSw.Home,
 	})
 
 	var certs *tlsutil.Certs
@@ -167,7 +170,7 @@ func run() error {
 	httpSrv := &http.Server{
 		Handler: admin.New(admin.Deps{
 			Config: cfg, State: st, Settings: set, Pools: mgr, Registry: reg,
-			Stats: collector, History: hist, Profit: profitSw, Events: ev, Certs: certs, Started: started,
+			Stats: collector, History: hist, Profit: profitSw, Timed: timedSw, Events: ev, Certs: certs, Started: started,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
@@ -196,6 +199,7 @@ func run() error {
 	histDone := make(chan struct{})
 	go func() { hist.Run(ctx); close(histDone) }()
 	go profitSw.Run(ctx)
+	go timedSw.Run(ctx)
 	httpErr := make(chan error, 1)
 	go func() {
 		slog.Info("admin UI listening", "addr", adminLn.Addr().String())

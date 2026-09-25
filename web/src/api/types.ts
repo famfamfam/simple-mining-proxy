@@ -69,6 +69,8 @@ export interface Pool {
   password_set: boolean
   /** Profit switching may choose this pool. */
   profit_switch: boolean
+  /** Timed switching moves the farm here for part of every period; one pool at most. */
+  timed_target: boolean
   role: Role
   fallback_position?: number
   health: Health
@@ -91,6 +93,7 @@ export interface PoolInput {
   username?: string
   password?: string
   profit_switch?: boolean
+  timed_target?: boolean
 }
 
 export interface TestResult {
@@ -290,4 +293,20 @@ export interface ProfitStatus {
   next_run: string | null
   btc_usd: number
   report: ProfitReport | null
+}
+
+export interface TimedStatus {
+  mode: 'off' | 'on'
+  /** Go durations, e.g. "30m". */
+  period: string
+  duration: string
+  /** Pool id marked for timed switching; "" when none is. */
+  target: string
+  /** While the farm is on the target: the pool it returns to and when. */
+  home?: string
+  until?: string
+  /** Start of the next window. */
+  next?: string
+  /** Why the last switch to the target failed. */
+  error?: string
 }

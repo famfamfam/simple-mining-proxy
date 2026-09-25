@@ -20,6 +20,7 @@ import (
 	"github.com/famfamfam/simple-mining-proxy/internal/settings"
 	"github.com/famfamfam/simple-mining-proxy/internal/state"
 	"github.com/famfamfam/simple-mining-proxy/internal/stats"
+	"github.com/famfamfam/simple-mining-proxy/internal/timed"
 )
 
 type env struct {
@@ -51,8 +52,9 @@ func newEnv(t *testing.T) *env {
 	}}
 	sw := profit.New(profit.Deps{Settings: set, Pools: mgr, Events: ev, Path: filepath.Join(t.TempDir(), "profit.json"),
 		Fetch: func(context.Context) (*profit.Market, error) { return market, nil }})
+	ts := timed.New(timed.Deps{Settings: set, Pools: mgr, Events: ev, Path: filepath.Join(t.TempDir(), "timed.json")})
 	h := New(Deps{Config: cfg, State: st, Settings: set, Pools: mgr,
-		Registry: reg, Stats: stats.NewCollector(), History: hist, Profit: sw, Events: ev, Started: time.Now()})
+		Registry: reg, Stats: stats.NewCollector(), History: hist, Profit: sw, Timed: ts, Events: ev, Started: time.Now()})
 	return &env{h: h, st: st, set: set, ev: ev}
 }
 

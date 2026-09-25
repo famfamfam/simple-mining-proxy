@@ -99,6 +99,11 @@ func TestValidation(t *testing.T) {
 	if _, err = s.Prepare(map[string]json.RawMessage{"history_detail_retention": raw(`"720h"`), "history_miner_retention": raw(`"720h"`)}); err != nil {
 		t.Errorf("equal retentions rejected: %v", err)
 	}
+	// cross constraint: the timed window is shorter than its period
+	_, err = s.Prepare(map[string]json.RawMessage{"timed_period": raw(`"30m"`), "timed_duration": raw(`"30m"`)})
+	if !errors.As(err, &e) || e.Fields["timed_duration"].Key != "setting_timed_duration" {
+		t.Errorf("timed_duration = timed_period: expected cross-check error, got %v", err)
+	}
 	// one bad value rejects the whole request
 	_, err = s.Prepare(map[string]json.RawMessage{"switch_drain": raw(`"20s"`), "log_level": raw(`"loud"`)})
 	if err == nil {

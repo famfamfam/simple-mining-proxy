@@ -40,6 +40,53 @@ func testManager(t *testing.T) *Manager {
 	return NewManager(st, set, session.NewRegistry(ev), ev)
 }
 
+// Only one pool is the timed target: marking another one moves the mark.
+func TestTimedTargetIsUnique(t *testing.T) {
+	m := testManager(t)
+	yes := true
+	if _, _, err := m.Update("a", Input{TimedTarget: &yes}, false); err != nil {
+		t.Fatal(err)
+	}
+	name, host, port, user := "Solo", "solo.example.com", 3333, "addr.{worker}"
+	if _, err := m.Create(Input{Name: &name, Host: &host, Port: &port, Username: &user, TimedTarget: &yes}); err != nil {
+		t.Fatal(err)
+	}
+	var marked []string
+	for _, p := range m.Snapshot().Pools {
+		if p.TimedTarget {
+			marked = append(marked, p.ID)
+		}
+	}
+	if len(marked) != 1 || marked[0] != "solo" {
+		t.Fatalf("marked: %v", marked)
+	}
+}
+
+// Restore sets the given fallback order, minus the new active pool, pools
+// that no longer exist and repeats.
+func TestRestoreSetsFallbackOrder(t *testing.T) {
+	m := testManager(t)
+	if _, err := m.Activate(context.Background(), "b", true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Restore(context.Background(), "a", []string{"b", "gone", "a", "b"}, "timer"); err != nil {
+		t.Fatal(err)
+	}
+	s := m.Snapshot()
+	if s.Active != "a" || len(s.Fallback) != 1 || s.Fallback[0] != "b" {
+		t.Fatalf("active %s, fallback %v", s.Active, s.Fallback)
+	}
+	if _, err := m.Restore(context.Background(), "b", nil, "timer"); err != nil {
+		t.Fatal(err)
+	}
+	if s := m.Snapshot(); s.Active != "b" || len(s.Fallback) != 0 {
+		t.Fatalf("nil fallback: active %s, fallback %v", s.Active, s.Fallback)
+	}
+	if ls := m.LastSwitch(); ls == nil || ls.Reason != "timer" {
+		t.Fatalf("last switch: %+v", ls)
+	}
+}
+
 func TestActivateClearsStaleDownHealth(t *testing.T) {
 	m := testManager(t)
 	b, _ := m.Snapshot().Get("b")

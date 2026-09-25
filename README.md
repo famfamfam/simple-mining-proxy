@@ -16,6 +16,7 @@ It was written for BTC and BCH pools. Pools for XEC, DigiByte (SHA-256) and Frac
 - Accepted and rejected shares, reject reasons and a 10-minute hashrate estimate, per pool and per miner.
 - Charts of hashrate, shares and miners from one hour to one year, stored on disk, including a history for each miner.
 - Optional profit switching between SHA-256 coins using WhatToMine data: advice only, or automatic.
+- Optional timed switching: part of every period on another pool, for example 10 minutes of every 30 on a solo pool.
 - Runtime settings with descriptions and validation, applied without a restart.
 - A self-signed TLS certificate on first start, or your own certificate, reloaded when it changes.
 - Connection limits and timeouts against slow or broken clients.
@@ -165,6 +166,9 @@ Everything else is set in Settings in the admin UI (or with `PUT /api/settings`)
 | `profit_switch` | off | off, advise, auto | Profit switching mode. |
 | `profit_interval` | 24 h | 1 h – 7 days | How often the coins are compared. |
 | `profit_margin` | 5 % | 0–50 % | How much more another coin must earn before switching to it. |
+| `timed_switch` | off | off, on | Timed switching. |
+| `timed_period` | 30 min | 10 min – 24 h | How often the farm moves to the timer pool. |
+| `timed_duration` | 10 min | 1 min – 12 h | How long it stays there in every period; shorter than `timed_period`. |
 | `tls_handshake_timeout` | 10 s | 1–60 s | Time a miner has to finish the TLS handshake. |
 | `first_message_timeout` | 15 s | 5 s – 2 min | Time a new connection has to send its first Stratum message. |
 | `upstream_dial_timeout` | 5 s | 1–30 s | Connect and TLS handshake timeout of one pool address. |
@@ -212,6 +216,22 @@ A profit switch works like a manual one: the target pool is checked, the change 
 
 On PPLNS pools frequent switching loses earnings. Use FPPS or PPS+ pools and an interval of a day or more, and start with Advise.
 
+## Timed switching
+
+Timed switching sends the farm to another pool for part of every period and brings it back, for example to a solo pool for 10 minutes of every 30 minutes: a third of the hashrate plays the solo lottery.
+
+1. Add the pool, for a solo pool usually with your payout address in the login template (`bc1q....{worker}`), and tick "Switch to this pool on the timer" in its editor. Only one pool can have it.
+2. In Settings, turn on timed switching and set the period (30 minutes by default) and the time on the timer pool (10 minutes by default).
+
+The time on the timer pool starts at multiples of the period: with 30 minutes, at :00 and :30. At that moment the timer pool is checked and made active; when the time is up, the farm returns to the pool that was active before, and the fallback order from before is put back. While the farm is on the timer pool, the pool it came from is the first fallback. Both switches show in the events with the reason `timer`.
+
+- If the timer pool fails its check, the farm stays where it is until the next period.
+- If you switch pools by hand during that time, your choice stays and the timer does not switch back.
+- A restart in the middle does not strand the farm: the way back is saved in `/data/timed.json`.
+- Profit switching waits with its scheduled check until the farm is back, and compares coins for the pool it returns to.
+
+Every switch reconnects all miners within `switch_drain`, so a 30-minute period costs four reconnects an hour. Switching away from a PPLNS pool also loses part of its reward window.
+
 ## API
 
 The admin UI uses a JSON API under `/api/`. Scripts authenticate with `Authorization: Bearer <API_TOKEN>`. Requests that change something must be sent with `Content-Type: application/json`.
@@ -237,6 +257,7 @@ The admin UI uses a JSON API under `/api/`. Scripts authenticate with `Authoriza
 | GET | `/api/history/workers?from=&to=` | Every miner seen in the range |
 | GET | `/api/profit` | Profit switching status and the last report |
 | POST | `/api/profit/check` | Compare the coins now; never switches |
+| GET | `/api/timed` | Timed switching: target pool, current window, next start |
 
 Errors have the form `{"error": "validation", "key": "...", "params": {...}, "message": "..."}` with status 400, 404, 409 or 422 (pool check failed). `message` is English text for scripts; the UI translates `key` with `params`.
 
@@ -297,6 +318,7 @@ For UI work, run `npm run dev` in `web/`: Vite reloads the page on changes and f
 | `internal/pool` | Pools, address checks, failover and failback, drain |
 | `internal/stats`, `internal/history` | Counters in memory, history on disk |
 | `internal/profit` | Coin revenue data and profit switching |
+| `internal/timed` | Timed switching to another pool and back |
 | `internal/admin`, `internal/apierr` | REST API, login and brute-force protection, error keys |
 | `internal/settings`, `internal/state` | Runtime settings, `state.json` |
 | `internal/tlsutil`, `internal/atomicfile` | TLS certificates, atomic file writes |

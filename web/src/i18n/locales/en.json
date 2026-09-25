@@ -117,7 +117,9 @@
     "reconnecting_one": "{{count}} session reconnects over {{window}}",
     "reconnecting_other": "{{count}} sessions reconnect over {{window}}",
     "profitSwitch": "profit",
-    "profitSwitchHint": "Profit switching may choose this pool"
+    "profitSwitchHint": "Profit switching may choose this pool",
+    "timedTarget": "timer",
+    "timedTargetHint": "Timed switching moves the farm to this pool for part of every period"
   },
   "test": {
     "title": "Check: {{pool}}",
@@ -157,7 +159,10 @@
     "addressEmpty": "enter at least one host:port address",
     "profit": "Profit switching",
     "profitSwitch": "Take part in profit switching",
-    "profitHelp": "Profit switching compares the coins of the pools marked here and can make the most profitable one active. The coin must be set: BTC, BCH, XEC, DGB or FB."
+    "profitHelp": "Profit switching compares the coins of the pools marked here and can make the most profitable one active. The coin must be set: BTC, BCH, XEC, DGB or FB.",
+    "timed": "Timer",
+    "timedTarget": "Switch to this pool on the timer",
+    "timedHelp": "For part of every period (Settings → Timed switching) the farm mines on this pool, for example a solo pool, and then returns. Only one pool can have this: marking it here clears it on the other pool."
   },
   "fallback": {
     "title": "Fallback pools",
@@ -226,6 +231,7 @@
       "logins": "Worker logins",
       "switching": "Switching and fallback pools",
       "profit": "Profit switching",
+      "timed": "Timed switching",
       "timeouts": "Timeouts",
       "limits": "Limits (overload protection)",
       "tls": "TLS",
@@ -334,6 +340,22 @@
       "history_miner_retention": {
         "title": "Miner history",
         "desc": "How long the hourly statistics of every miner (hashrate, shares, time online) are kept. The detailed history also has ten-minute points. Grows with the farm: about 1.3 KB a day per miner hourly and 8 KB detailed."
+      },
+      "timed_switch": {
+        "title": "Timed switching",
+        "desc": "At the start of every period the farm moves to the pool marked “Switch to this pool on the timer” in the pool editor, for example a solo pool, and after the set time returns to the pool and fallback order it had before. Every switch reconnects all miners within the reconnect window. If the timer pool fails its check, the farm stays where it is until the next period. A pool chosen by hand during that time stays.",
+        "options": {
+          "off": "Off",
+          "on": "On"
+        }
+      },
+      "timed_period": {
+        "title": "Timer period",
+        "desc": "How often the farm moves to the timer pool. The time on it starts at multiples of the period: every 30 minutes means at :00 and :30."
+      },
+      "timed_duration": {
+        "title": "Time on the timer pool",
+        "desc": "How long the farm mines on the timer pool in every period; shorter than the period. 10 minutes every 30 minutes is a third of the hashrate."
       }
     },
     "server": {
@@ -414,7 +436,8 @@
     "history_param": "{{name}} must be an integer",
     "history_range": "The start of the period must be before its end",
     "setting_history_below_detail": "must not be less than “Detailed history” ({{detail}})",
-    "history_worker": "The miner name is required"
+    "history_worker": "The miner name is required",
+    "setting_timed_duration": "must be shorter than “Timer period” ({{period}})"
   },
   "stats": {
     "title": "Charts",
@@ -493,5 +516,12 @@
       "switched": "Switched to {{pool}}: {{best}} earns {{adv}} more than {{coin}}.",
       "switch_failed": "Switching to {{pool}} failed: {{error}}"
     }
+  },
+  "timed": {
+    "badge": "Timer",
+    "noTarget": "Timed switching is on, but no pool is marked: tick “Switch to this pool on the timer” in the pool editor.",
+    "now": "On {{pool}} until {{until}}, then back to {{home}}.",
+    "plan": "{{pool}} for {{length}} every {{every}}; next at {{next}}.",
+    "failed": "The last switch failed: {{error}}"
   }
 }

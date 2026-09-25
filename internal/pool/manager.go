@@ -260,16 +260,29 @@ func (m *Manager) checkFailback(now time.Time) {
 // Activate makes id the active pool: validate → test → persist → switch →
 // drain. On any error before persist nothing changes.
 func (m *Manager) Activate(ctx context.Context, id string, force bool) (int, error) {
-	return m.activate(ctx, id, force, "manual")
+	return m.activate(ctx, id, force, "manual", nil)
 }
 
 // ActivateFor is Activate with the pool check, for a switch the proxy
 // decides itself; reason goes to the switch record and the event.
 func (m *Manager) ActivateFor(ctx context.Context, id, reason string) (int, error) {
-	return m.activate(ctx, id, false, reason)
+	return m.activate(ctx, id, false, reason, nil)
 }
 
-func (m *Manager) activate(ctx context.Context, id string, force bool, reason string) (int, error) {
+// Restore makes id the active pool again after a temporary switch and puts
+// back the fallback order from before it. There is no pool check: if id is
+// down now, failover sends sessions to the fallback pools. Pools that no
+// longer exist, repeats and id itself are dropped from fallback.
+func (m *Manager) Restore(ctx context.Context, id string, fallback []string, reason string) (int, error) {
+	if fallback == nil {
+		fallback = []string{}
+	}
+	return m.activate(ctx, id, true, reason, fallback)
+}
+
+// activate switches to id. A nil fallback rotates the order: the previous
+// active pool becomes the first fallback.
+func (m *Manager) activate(ctx context.Context, id string, force bool, reason string, fallback []string) (int, error) {
 	m.opMu.Lock()
 	defer m.opMu.Unlock()
 
@@ -289,13 +302,17 @@ func (m *Manager) activate(ctx context.Context, id string, force bool, reason st
 		}
 		from = f.ActivePool
 		f.ActivePool = id
-		fallback := without(f.FallbackPools, id)
+		if fallback != nil {
+			f.FallbackPools = existingOnce(f, fallback, id)
+			return nil
+		}
+		order := without(f.FallbackPools, id)
 		if from != "" && from != id {
 			// Preserve failover after a manual switch: the previous active pool
 			// becomes the first fallback, while the remaining order is kept.
-			fallback = append([]string{from}, without(fallback, from)...)
+			order = append([]string{from}, without(order, from)...)
 		}
-		f.FallbackPools = fallback
+		f.FallbackPools = order
 		return nil
 	}, m.setSnapshot)
 	if err != nil {
@@ -389,6 +406,7 @@ type Input struct {
 	Username      *string          `json:"username"`
 	Password      *string          `json:"password"`
 	ProfitSwitch  *bool            `json:"profit_switch"`
+	TimedTarget   *bool            `json:"timed_target"`
 }
 
 func apply(p *state.Pool, in Input) {
@@ -431,7 +449,23 @@ func apply(p *state.Pool, in Input) {
 	if in.ProfitSwitch != nil {
 		p.ProfitSwitch = *in.ProfitSwitch
 	}
+	if in.TimedTarget != nil {
+		p.TimedTarget = *in.TimedTarget
+	}
 	p.Coin = strings.ToUpper(p.Coin)
+}
+
+// onlyTimedTarget clears the timed target mark on every pool but p, which
+// just got it: there is one pool to switch to on the timer.
+func onlyTimedTarget(f *state.File, p state.Pool) {
+	if !p.TimedTarget {
+		return
+	}
+	for i := range f.Pools {
+		if f.Pools[i].ID != p.ID {
+			f.Pools[i].TimedTarget = false
+		}
+	}
 }
 
 func validate(p *state.Pool) error {
@@ -515,6 +549,7 @@ func (m *Manager) Create(in Input) (state.Pool, error) {
 		} else {
 			p.ID = makeID(p.Name, f)
 		}
+		onlyTimedTarget(f, p)
 		f.Pools = append(f.Pools, p)
 		if f.ActivePool == "" {
 			f.ActivePool = p.ID
@@ -558,6 +593,7 @@ func (m *Manager) Update(id string, in Input, reconnect bool) (state.Pool, int, 
 		old = *p
 		*p = next
 		updated = next
+		onlyTimedTarget(f, next)
 		return nil
 	}, m.setSnapshot)
 	if err != nil {
@@ -645,6 +681,17 @@ func (m *Manager) SetFallback(ids []string) error {
 		m.ev.Info("fallback_changed", "fallback order: %s", strings.Join(names, " → "))
 	}
 	return nil
+}
+
+// existingOnce keeps the ids of existing pools other than skip, each once.
+func existingOnce(f *state.File, ids []string, skip string) []string {
+	out := []string{}
+	for _, id := range ids {
+		if _, ok := f.Pool(id); ok && id != skip && !slices.Contains(out, id) {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 func without(ids []string, id string) []string {

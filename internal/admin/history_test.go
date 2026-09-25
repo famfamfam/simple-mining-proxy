@@ -45,6 +45,37 @@ func TestHistoryAPI(t *testing.T) {
 	}
 }
 
+func TestTimedAPI(t *testing.T) {
+	e := newEnv(t)
+	w := e.do("GET", "/api/timed", "", bearer)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"mode":"off","period":"30m","duration":"10m","target":""`) {
+		t.Fatalf("status: %d %s", w.Code, w.Body)
+	}
+	// The mark moves to the last pool that got it.
+	for _, name := range []string{"Pool A", "Solo"} {
+		body := `{"name":"` + name + `","host":"x.example.com","port":3333,"username":"u","timed_target":true}`
+		if w := e.do("POST", "/api/pools", body, bearer); w.Code != http.StatusCreated {
+			t.Fatalf("create %s: %d %s", name, w.Code, w.Body)
+		}
+	}
+	w = e.do("GET", "/api/pools", "", bearer)
+	var body struct {
+		Pools []struct {
+			ID          string `json:"id"`
+			TimedTarget bool   `json:"timed_target"`
+		} `json:"pools"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("pools: %s", w.Body)
+	}
+	if p := body.Pools; len(p) != 2 || p[0].TimedTarget || !p[1].TimedTarget {
+		t.Fatalf("timed_target: %+v", p)
+	}
+	if w := e.do("GET", "/api/timed", "", bearer); !strings.Contains(w.Body.String(), `"target":"solo"`) {
+		t.Fatalf("status with a target: %s", w.Body)
+	}
+}
+
 func TestProfitAPI(t *testing.T) {
 	e := newEnv(t)
 	w := e.do("GET", "/api/profit", "", bearer)
