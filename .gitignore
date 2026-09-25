@@ -1,0 +1,16 @@
+/docs/
+/deploy/
+/.env
+/data/
+/certs/
+/state.json
+/proxy
+/proxy.exe
+/coverage.out
+*.test
+
+# Web UI: dependencies and the Vite build. dist/robots.txt stays in git so the
+# Go embed compiles before the first build (see web/web.go).
+/web/node_modules/
+/web/dist/*
+!/web/dist/robots.txt

@@ -1,0 +1,497 @@
+{
+  "app": {
+    "brand": "SHA256 Stratum Proxy"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "stats": "Charts",
+    "miners": "Miners",
+    "events": "Events",
+    "settings": "Settings",
+    "logout": "Log out",
+    "language": "Language",
+    "uptime": "uptime {{value}}"
+  },
+  "common": {
+    "loading": "Loading…",
+    "cancel": "Cancel",
+    "save": "Save",
+    "close": "Close",
+    "copy": "Copy",
+    "copied": "Copied",
+    "copyManually": "Copy it manually: {{text}}",
+    "loadFailed": "Could not load data: {{error}}"
+  },
+  "units": {
+    "ms": "{{value}} ms",
+    "s": "{{value}} s",
+    "min": "{{value}} min",
+    "h": "{{value}} h",
+    "d": "{{value}} d",
+    "ago": "{{value}} ago",
+    "unit": "Unit",
+    "sName": "s",
+    "minName": "min",
+    "hName": "h",
+    "dName": "d",
+    "bytes": "{{value}} B",
+    "kb": "{{value}} KB",
+    "mb": "{{value}} MB",
+    "gb": "{{value}} GB"
+  },
+  "login": {
+    "username": "Username",
+    "password": "Password",
+    "submit": "Log in"
+  },
+  "mode": {
+    "NORMAL": "Normal",
+    "DEGRADED": "On fallback",
+    "DOWN": "No pools",
+    "SWITCHING": "Switching"
+  },
+  "role": {
+    "active": "Active",
+    "fallback": "Fallback #{{n}}"
+  },
+  "dashboard": {
+    "mode": "Mode",
+    "newSessionsTo": "new sessions → {{pool}}",
+    "activePool": "Active pool",
+    "addPoolHint": "add a pool",
+    "miners": "Miners",
+    "minersSub": "TCP {{tcp}} / TLS {{tls}}",
+    "hashrate": "Hashrate ≈",
+    "hashrateSub": "estimate from shares over 10 min",
+    "shares": "Shares",
+    "sharesSub": "rejected {{rejected}} ({{pct}})",
+    "lastSwitch": "Last switch",
+    "connection": "ASIC connection",
+    "listenerOff": "off",
+    "hostPlaceholder": "<VDS IP or domain>",
+    "tlsSchemeHint": "If the firmware does not accept stratum+tls://, enter {{alt}} — it is the same.",
+    "loginHint": "ASIC login: any name with a dot, e.g. farm.S21-01. The part after the first dot becomes {worker} in the pool template. Password: x.",
+    "hostHint": "The host and ports come from PUBLIC_HOST and the ports in .env.",
+    "pools": "Pools",
+    "addPool": "Add pool",
+    "fallbackOrder": "Fallback order",
+    "reconnectAll": "Reconnect all",
+    "noPools": "No pools yet. Add the first one — it becomes active.",
+    "recentEvents": "Recent events",
+    "allEvents": "All events",
+    "hashrateDay": "Hashrate, last 24 hours",
+    "allCharts": "All charts"
+  },
+  "pools": {
+    "pool": "Pool",
+    "coin": "Coin",
+    "role": "Role",
+    "state": "State",
+    "sessions": "Sessions",
+    "hashrate": "Hashrate",
+    "shares": "Accepted / rejected",
+    "actions": "Actions",
+    "switch": "Switch",
+    "test": "Test",
+    "edit": "Edit",
+    "delete": "Delete",
+    "fastest": "Fastest address: new sessions go here",
+    "switchTitle": "Switch pool",
+    "switchText_one": "Switch {{count}} miner to {{pool}}? The pool is checked first (subscribe + authorize), then miners reconnect gradually.",
+    "switchText_other": "Switch {{count}} miners to {{pool}}? The pool is checked first (subscribe + authorize), then miners reconnect gradually.",
+    "switchConfirm": "Switch",
+    "checkFailedTitle": "Pool check failed",
+    "switchAnyway": "Switch without the check anyway?",
+    "switchForce": "Switch without check",
+    "switched_one": "{{pool}} is active. {{count}} session reconnects over {{window}}.",
+    "switched_other": "{{pool}} is active. {{count}} sessions reconnect over {{window}}.",
+    "deleteTitle": "Delete pool",
+    "deleteText": "Delete pool {{pool}}?",
+    "deleteSessions_one": "Its {{count}} session will reconnect to other pools.",
+    "deleteSessions_other": "Its {{count}} sessions will reconnect to other pools.",
+    "deleted": "Pool deleted",
+    "reconnectTitle": "Reconnect all",
+    "reconnectText_one": "Reconnect {{count}} miner? Miners are disconnected gradually over the reconnect window and come back right away.",
+    "reconnectText_other": "Reconnect {{count}} miners? Miners are disconnected gradually over the reconnect window and come back right away.",
+    "reconnectConfirm": "Reconnect",
+    "reconnecting_one": "{{count}} session reconnects over {{window}}",
+    "reconnecting_other": "{{count}} sessions reconnect over {{window}}",
+    "profitSwitch": "profit",
+    "profitSwitchHint": "Profit switching may choose this pool"
+  },
+  "test": {
+    "title": "Check: {{pool}}",
+    "unsaved": "Check of unsaved settings",
+    "running": "Connecting, subscribing and authorizing as the test worker…",
+    "passed": "Passed",
+    "failed": "Failed",
+    "ok": "OK",
+    "elapsed": "Took {{value}}"
+  },
+  "editor": {
+    "newTitle": "New pool",
+    "editTitle": "Pool {{pool}}",
+    "name": "Name",
+    "coin": "Coin",
+    "addresses": "Addresses",
+    "addressesHelp": "One host:port per line: servers of the same pool in different regions. New sessions go to the fastest working address (by connect time); if it fails, to the next one, and only then to a fallback pool.",
+    "transport": "Transport",
+    "skipVerify": "Skip TLS verify (insecure)",
+    "skipVerifyWarning": "The pool certificate is not checked: the VDS → pool link can be intercepted and the hashrate stolen. Enable only for a pool with a self-signed certificate.",
+    "schemeDetected": "Transport set from the pasted address: {{transport}}",
+    "username": "Username template",
+    "usernameHelp": "{worker} is the ASIC login after the first dot, {login} is the whole login.",
+    "password": "Password",
+    "passwordSet": "set",
+    "passwordChange": "Change",
+    "passwordHelp": "{password} inserts the password the ASIC sent.",
+    "reconnect_one": "Apply now: reconnect {{count}} session of this pool",
+    "reconnect_other": "Apply now: reconnect {{count}} sessions of this pool",
+    "test": "Test",
+    "testHelp": "Checks the settings in this form, before saving",
+    "added": "Pool added",
+    "saved": "Pool saved",
+    "savedReconnecting_one": "Pool saved, {{count}} session reconnects",
+    "savedReconnecting_other": "Pool saved, {{count}} sessions reconnect",
+    "addressLine": "line {{line}} “{{text}}”: expected host:port",
+    "addressEmpty": "enter at least one host:port address",
+    "profit": "Profit switching",
+    "profitSwitch": "Take part in profit switching",
+    "profitHelp": "Profit switching compares the coins of the pools marked here and can make the most profitable one active. The coin must be set: BTC, BCH, XEC, DGB or FB."
+  },
+  "fallback": {
+    "title": "Fallback pools",
+    "help": "If the active pool is down, new sessions go to the first working fallback pool in this order.",
+    "remove": "Remove",
+    "add": "Add",
+    "up": "Move up",
+    "down": "Move down",
+    "empty": "No fallback pools",
+    "saved": "Fallback order saved"
+  },
+  "miners": {
+    "title": "Miners",
+    "filter": "Filter by worker, IP or pool",
+    "count": "{{shown}} of {{total}}",
+    "totalHashrate": "total ≈ {{value}}",
+    "worker": "Worker",
+    "upstreamUser": "Upstream username",
+    "ip": "IP",
+    "transport": "Transport",
+    "pool": "Pool",
+    "userAgent": "User agent",
+    "difficulty": "Difficulty",
+    "accepted": "Accepted",
+    "rejected": "Rejected",
+    "lastShare": "Last share",
+    "hashrate": "Hashrate",
+    "connected": "Connected",
+    "nothingFound": "Nothing found",
+    "empty": "No miners connected",
+    "openStats": "History of this miner",
+    "offline_one": "Offline: {{count}} miner seen in the last 24 hours",
+    "offline_other": "Offline: {{count}} miners seen in the last 24 hours",
+    "offlineHelp": "They sent shares or were connected in the last day but are not connected now."
+  },
+  "events": {
+    "title": "Events",
+    "help": "The last 500 events in memory; the list starts over after a restart. Full log: docker logs.",
+    "all": "All",
+    "warnings": "Warnings and errors",
+    "errors": "Errors",
+    "empty": "No events"
+  },
+  "settings": {
+    "title": "Settings",
+    "help": "All settings apply without a restart; each one says when a change takes effect. ● — differs from the default, ↺ — restore the default.",
+    "default": "Default: {{value}}",
+    "allowed": "Allowed: {{value}}",
+    "applies": "Applies: {{value}}",
+    "outOfRange": "allowed: {{range}}",
+    "length": "{{min}}–{{max}} characters",
+    "modified": "modified",
+    "resetOne": "Restore the default",
+    "modifiedCount": "differ from defaults: {{count}}",
+    "unsavedCount": "unsaved: {{count}}",
+    "resetAll": "Reset all to defaults",
+    "discard": "Discard",
+    "unsavedLeave": "Unsaved settings changes will be lost. Leave anyway?",
+    "saved": "Saved: {{changes}}",
+    "noChanges": "No changes",
+    "applyTitle": "Apply to connected miners?",
+    "applyText_one": "Some changes affect only new connections. Reconnect {{count}} miner now? It disconnects and comes right back.",
+    "applyText_other": "Some changes affect only new connections. Reconnect {{count}} miners now? They disconnect gradually and come right back.",
+    "off": "0 (off)",
+    "groups": {
+      "logins": "Worker logins",
+      "switching": "Switching and fallback pools",
+      "profit": "Profit switching",
+      "timeouts": "Timeouts",
+      "limits": "Limits (overload protection)",
+      "tls": "TLS",
+      "history": "History and charts",
+      "logging": "Logging"
+    },
+    "appliesTo": {
+      "immediately": "immediately",
+      "new_connections": "to new connections",
+      "next_drain": "from the next reconnect (drain)"
+    },
+    "items": {
+      "test_worker": {
+        "title": "Test worker",
+        "desc": "Worker name the pool check (the Test button and the check before a switch) authorizes with. It may stay in the pool dashboard as an inactive worker.",
+        "note": "Latin letters, digits, “-”, “_”"
+      },
+      "switch_drain": {
+        "title": "Reconnect window",
+        "desc": "How long the proxy spreads out disconnecting miners on a pool switch, a failback and “Reconnect all”. Longer is gentler on the pool, but part of the farm stays on the old pool longer. 0 means all at once."
+      },
+      "failback_delay": {
+        "title": "Failback delay",
+        "desc": "How long the active pool must stay healthy before miners return to it from a fallback pool. Prevents flapping when the pool is unstable."
+      },
+      "pool_probe_interval": {
+        "title": "Pool check interval",
+        "desc": "How often the proxy checks every address of every pool (connect and mining.subscribe, no authorization) and measures the connect time. More often detects an outage sooner but connects to pools more."
+      },
+      "tls_handshake_timeout": {
+        "title": "TLS handshake timeout",
+        "desc": "How long to wait for an ASIC to finish the TLS handshake on the TLS port before closing the connection."
+      },
+      "first_message_timeout": {
+        "title": "First message timeout",
+        "desc": "How long to wait for the first Stratum message after an ASIC connects. Protects against connections that send nothing. The proxy connects to the pool only after this message."
+      },
+      "upstream_dial_timeout": {
+        "title": "Pool connect timeout",
+        "desc": "How long to wait for a connection (and TLS handshake) to one pool address before trying the next address or a fallback pool."
+      },
+      "upstream_connect_budget": {
+        "title": "Total pool search time",
+        "desc": "How long a session may try addresses and pools in total. If none answers, the ASIC connection is closed and the ASIC reconnects by itself.",
+        "note": "not less than “Pool connect timeout”"
+      },
+      "miner_idle_timeout": {
+        "title": "ASIC idle timeout",
+        "desc": "If an ASIC sends nothing for longer than this, the session is closed."
+      },
+      "upstream_idle_timeout": {
+        "title": "Pool idle timeout",
+        "desc": "If the pool sends nothing for longer than this, the session is closed and the ASIC reconnects. Too small a value breaks sessions on pools that rarely send jobs."
+      },
+      "max_connections": {
+        "title": "Total connections",
+        "desc": "How many ASIC connections the proxy holds at once (TCP and TLS together). Extra ones are closed right away. Lowering the value does not disconnect miners already connected."
+      },
+      "max_pending_connections": {
+        "title": "Connections awaiting first message",
+        "desc": "How many connections may wait for their first Stratum message at the same time. Protects against slow-connection attacks.",
+        "note": "not more than “Total connections”"
+      },
+      "max_conn_per_ip": {
+        "title": "Connections per IP",
+        "desc": "Limit of connections from one address; 0 turns it off. ⚠ A whole farm usually reaches the internet from one IP: if you enable it, set it well above the number of ASICs."
+      },
+      "max_line_bytes": {
+        "title": "Maximum message size",
+        "desc": "If a single Stratum message (from an ASIC or a pool) is longer, the session is closed. Rarely needs changing."
+      },
+      "tls_min_version": {
+        "title": "Minimum TLS version",
+        "desc": "The oldest TLS version the TLS port accepts. Lower it only if an old firmware cannot connect otherwise: 1.0 and 1.1 are insecure."
+      },
+      "log_level": {
+        "title": "Log level",
+        "desc": "How detailed the container logs are. debug is for troubleshooting: details of every session, the log volume grows a lot. Passwords are never logged at any level."
+      },
+      "history_detail_retention": {
+        "title": "Detailed history",
+        "desc": "How long per-minute statistics are kept. Charts for up to 3 days are drawn from them; longer periods use hourly points. Takes about 0.3–0.5 MB per day with a few pools."
+      },
+      "history_retention": {
+        "title": "History retention",
+        "desc": "How long hourly statistics are kept for long-range charts. Takes about 10 KB per day, so years of history fit easily.",
+        "note": "not less than “Detailed history”"
+      },
+      "profit_switch": {
+        "title": "Profit switching",
+        "desc": "On schedule the proxy compares the coins of the pools marked “Take part in profit switching”: network difficulty, block reward with fees and price, 24-hour averages from WhatToMine. Advise only shows what earns more; Auto makes the most profitable pool active, with the same pool check as a manual switch. An active pool that does not take part is left alone.",
+        "options": {
+          "off": "Off",
+          "advise": "Advise",
+          "auto": "Auto"
+        }
+      },
+      "profit_interval": {
+        "title": "Profitability check interval",
+        "desc": "How often to compare the coins and decide. More often reacts sooner to difficulty and price changes, but miners reconnect more often, and on PPLNS pools frequent switching loses income."
+      },
+      "profit_margin": {
+        "title": "Switching margin",
+        "desc": "How much more another coin must earn than the current one to switch to it. Protects against switching on noise: BTC and BCH usually differ by only 1–3%."
+      },
+      "history_miner_retention": {
+        "title": "Miner history",
+        "desc": "How long the hourly statistics of every miner (hashrate, shares, time online) are kept. The detailed history also has ten-minute points. Grows with the farm: about 1.3 KB a day per miner hourly and 8 KB detailed."
+      }
+    },
+    "server": {
+      "title": "Server",
+      "help": "Read only. These values are set in .env on the server and apply after docker compose up -d: changing a port from the UI would break Docker port publishing, and a mistake in the password would lock you out.",
+      "tcp": "Stratum TCP",
+      "tls": "Stratum TLS",
+      "inContainer": "in the container: {{listen}}",
+      "certificate": "TLS certificate",
+      "certSelfSigned": "self-signed",
+      "certLoaded": "loaded from file",
+      "certUntil": "until {{date}}",
+      "tlsOff": "the TLS port is off",
+      "admin": "Administrator",
+      "apiToken": "API token: {{state}}",
+      "tokenSet": "set",
+      "tokenNotSet": "not set",
+      "adminListen": "Admin UI in the container",
+      "dataDir": "Data directory",
+      "logFormat": "Log format"
+    }
+  },
+  "errors": {
+    "internal": "Server error: {{error}}",
+    "login_required": "Please log in",
+    "json_required": "The request must be JSON",
+    "invalid_credentials": "Wrong username or password",
+    "login_locked": "Too many failed attempts from your address. Try again in {{seconds}} s",
+    "login_locked_global": "Login is temporarily locked after a password-guessing flood. Try again in {{seconds}} s",
+    "api_not_found": "Unknown API endpoint",
+    "body_empty": "The request body is empty",
+    "body_not_object": "The request body must be a JSON object",
+    "body_extra": "The request body must hold a single JSON value",
+    "body_invalid_json": "Invalid JSON: {{error}}",
+    "required": "required",
+    "state_save_failed": "Could not save state.json: {{error}}",
+    "pool_not_found": "Pool not found: {{id}}",
+    "pool_check_failed": "Check of pool {{pool}} failed: {{error}}",
+    "pool_unreachable": "No address passed the check: {{error}}",
+    "pool_invalid": "Some pool fields are invalid",
+    "pool_name": "required, up to 64 characters",
+    "pool_name_taken": "a pool with this name already exists; e.g. add the coin: “EMCD BCH”",
+    "pool_coin": "up to 16 characters",
+    "pool_username": "required, up to 256 characters; e.g. account.{worker}",
+    "pool_username_spaces": "spaces are not allowed",
+    "pool_password": "up to 256 characters",
+    "pool_skip_verify": "only allowed with TLS",
+    "pool_id": "lowercase Latin letters, digits and “_”, up to 32 characters",
+    "pool_id_taken": "A pool with id {{id}} already exists",
+    "pool_delete_active": "The active pool cannot be deleted: switch to another pool first",
+    "pool_addresses_empty": "at least one host:port address is required",
+    "pool_addresses_many": "at most {{max}} addresses",
+    "pool_address": "address {{n}} ({{address}}): {{reason}}",
+    "addr_host_missing": "the host is missing",
+    "addr_ipv6_brackets": "write IPv6 without square brackets",
+    "addr_scheme": "host name or IP only",
+    "addr_port_separate": "the port goes separately",
+    "addr_ipv6_invalid": "invalid IPv6 address",
+    "addr_port": "port must be 1–65535",
+    "addr_duplicate": "listed twice",
+    "fallback_active": "The active pool cannot be a fallback",
+    "fallback_duplicate": "Pool {{id}} is listed twice",
+    "fallback_pools_required": "The list of pools is required",
+    "settings_invalid": "Some setting values are invalid",
+    "settings_no_changes": "No changes",
+    "setting_unknown": "unknown setting",
+    "setting_type": "unknown setting type",
+    "setting_duration": "expected a duration",
+    "setting_integer": "expected an integer",
+    "setting_string": "expected a string",
+    "setting_spaces": "spaces are not allowed",
+    "setting_pattern": "contains characters that are not allowed",
+    "setting_range": "allowed: {{min}} – {{max}}",
+    "setting_option": "allowed: {{options}}",
+    "setting_length": "{{min}}–{{max}} characters",
+    "setting_budget_below_dial": "must not be less than “Pool connect timeout” ({{dial}})",
+    "setting_pending_above_total": "must not be more than “Total connections”",
+    "history_param": "{{name}} must be an integer",
+    "history_range": "The start of the period must be before its end",
+    "setting_history_below_detail": "must not be less than “Detailed history” ({{detail}})",
+    "history_worker": "The miner name is required"
+  },
+  "stats": {
+    "title": "Charts",
+    "range": "Period",
+    "ranges": {
+      "1h": "1 hour",
+      "6h": "6 hours",
+      "24h": "24 hours",
+      "7d": "7 days",
+      "30d": "30 days",
+      "90d": "90 days",
+      "1y": "1 year"
+    },
+    "avgHashrate": "Average hashrate",
+    "pointEvery": "one point per {{step}}",
+    "accepted": "Accepted shares",
+    "rejected": "Rejected shares",
+    "rejectedSub": "{{pct}} of all shares",
+    "peakMiners": "Miners, peak",
+    "avgMiners": "average {{value}}",
+    "hashrate": "Hashrate",
+    "byPool": "Hashrate by pool",
+    "otherPools": "Other pools",
+    "miners": "Connected miners",
+    "rejectRate": "Rejected shares, %",
+    "noData": "No data for this period yet. The proxy records statistics every minute while it runs.",
+    "table": "Data as a table",
+    "csv": "Download CSV",
+    "time": "Time",
+    "storage": "Kept per minute for {{detail}}, hourly for {{total}}, per miner for {{miners}}; {{size}} on disk.",
+    "storageLink": "Change in Settings",
+    "workers_one": "Miners in the period: {{count}}",
+    "workers_other": "Miners in the period: {{count}}"
+  },
+  "minerStats": {
+    "title": "Miner {{name}}",
+    "hashrate": "Hashrate",
+    "whileOnline": "while connected",
+    "online": "Online",
+    "rejectedPct": "Rejected",
+    "lastSeen": "Last seen",
+    "noData": "No history for this miner in this period."
+  },
+  "profit": {
+    "title": "Coin profitability",
+    "mode": {
+      "off": "Off",
+      "advise": "Advise",
+      "auto": "Auto"
+    },
+    "checked": "checked {{ago}}",
+    "neverChecked": "not checked yet",
+    "next": "next check {{at}}",
+    "margin": "margin {{margin}}%",
+    "checkNow": "Check now",
+    "switchTo": "Switch to {{pool}}",
+    "coin": "Coin",
+    "price": "Price",
+    "difficulty": "Difficulty",
+    "reward": "Block reward",
+    "revenue": "Revenue per PH/s a day",
+    "vsCurrent": "vs current",
+    "pools": "Pools taking part",
+    "current": "current",
+    "best": "best",
+    "stale": "old data",
+    "farm": "The farm at its current hashrate earns about {{revenue}} a day on {{coin}}, before pool fees.",
+    "source": "24-hour averages of network difficulty, block reward (with fees) and price, before pool fees. Data:",
+    "decision": {
+      "no_data": "No market data ({{error}}): nothing changes.",
+      "no_candidates": "No pool takes part in profit switching: mark pools in the pool editor.",
+      "manual": "The active pool {{pool}} does not take part in profit switching, so it is left alone.",
+      "best": "{{coin}} earns the most of the coins of the pools taking part: staying.",
+      "below_margin": "{{best}} earns {{adv}} more than {{coin}}, below the {{margin}}% margin: staying.",
+      "recommend": "{{best}} earns {{adv}} more than {{coin}}: switching to {{pool}} is worth it.",
+      "switched": "Switched to {{pool}}: {{best}} earns {{adv}} more than {{coin}}.",
+      "switch_failed": "Switching to {{pool}} failed: {{error}}"
+    }
+  }
+}

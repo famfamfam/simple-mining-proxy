@@ -1,0 +1,43 @@
+services:
+  proxy:
+    build:
+      context: .
+    image: simpleminingproxy:local
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      STRATUM_TCP_ADDR: ":13333"
+      STRATUM_TLS_ADDR: ":14443"
+      ADMIN_ADDR: ":18080"
+      ADMIN_USERNAME: "${ADMIN_USERNAME:-admin}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}"
+      API_TOKEN: "${API_TOKEN:-}"
+      DATA_DIR: "/data"
+      TLS_SELF_SIGNED_HOSTS: "${TLS_SELF_SIGNED_HOSTS:-}"
+      PUBLIC_HOST: "${PUBLIC_HOST:-}"
+      PUBLIC_TCP_PORT: "${PUBLIC_TCP_PORT:-13333}"
+      PUBLIC_TLS_PORT: "${PUBLIC_TLS_PORT:-14443}"
+      LOG_FORMAT: "${LOG_FORMAT:-json}"
+    ports:
+      - "${PUBLIC_TCP_PORT:-13333}:13333/tcp"
+      - "${PUBLIC_TLS_PORT:-14443}:14443/tcp"
+      - "127.0.0.1:${ADMIN_PORT:-18080}:18080/tcp"
+    volumes:
+      - proxy-data:/data
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "5"
+    stop_grace_period: 15s
+
+volumes:
+  proxy-data:

@@ -1,0 +1,21 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+docs
+README.md
+Dockerfile*
+docker-compose*.yml
+data
+certs
+state.json
+proxy
+proxy.exe
+*.test
+coverage.out
+deploy
+# Installed and built inside the image.
+web/node_modules
+web/dist
+!web/dist/robots.txt
