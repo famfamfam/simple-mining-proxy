@@ -53,6 +53,9 @@ export const useWorkers = (seconds: number) =>
 
 export const useProfit = () => useQuery({ queryKey: ['profit'], queryFn: api.profit, refetchInterval: HISTORY_POLL_MS })
 
+// The server caches market data for 10 minutes, so this poll is cheap.
+export const useNetwork = () => useQuery({ queryKey: ['network'], queryFn: api.network, refetchInterval: HISTORY_POLL_MS })
+
 export const useTimed = () => useQuery({ queryKey: keys.timed, queryFn: api.timed, refetchInterval: POLL_MS })
 
 // Settings are edited in place: loaded when the screen opens, never polled.

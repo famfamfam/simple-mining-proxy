@@ -2,7 +2,16 @@ import type { TFunction } from 'i18next'
 import { describe, expect, it } from 'vitest'
 import { hostPort, parseAddresses } from './addresses'
 import { bestUnit, parseGoDuration, toGoDuration, unitsUpTo } from './duration'
-import { formatAgo, formatDifficulty, formatDuration, formatHashrate, formatHashrateHs } from './format'
+import {
+  formatAgo,
+  formatChance,
+  formatDifficulty,
+  formatDuration,
+  formatHashrate,
+  formatHashrateHs,
+  formatLongDuration,
+} from './format'
+import { blockChance, blockRate } from './odds'
 
 // A stand-in for i18next with English units.
 const t = ((key: string, o?: { value?: unknown }) => {
@@ -82,6 +91,33 @@ describe('durations', () => {
     expect(formatAgo('2026-01-01T11:59:15Z', t, now)).toBe('45 s ago')
     expect(formatAgo('2026-01-01T11:57:50Z', t, now)).toBe('2 min ago')
     expect(formatAgo(null, t, now)).toBe('—')
+  })
+})
+
+describe('solo odds', () => {
+  it('computes block rate and chance', () => {
+    const d = 1e15 / 2 ** 32 // a block takes 1e15 hashes
+    const hs = 1e15 / 3600 // finds one block per hour on average
+    expect(blockRate(hs, d) * 3600).toBeCloseTo(1, 10)
+    expect(blockChance(hs, d, 3600)).toBeCloseTo(1 - Math.exp(-1), 10)
+    expect(blockChance(0, d, 3600)).toBe(0)
+    expect(blockChance(hs, 0, 3600)).toBe(0)
+    // Tiny chances keep their precision.
+    expect(blockChance(1, 1e14, 3600)).toBeGreaterThan(0)
+  })
+
+  it('formats chances and long times', () => {
+    const tt = ((key: string, o?: { value?: unknown; n?: unknown; count?: number }) =>
+      key === 'units.oneIn' ? `1 in ${String(o?.n)}` : key === 'units.y' ? `${String(o?.value)} y` : t(key, o)) as TFunction
+    expect(formatChance(0.1234, tt, 'en')).toBe('12%')
+    expect(formatChance(0.00034, tt, 'en')).toBe('0.034%')
+    expect(formatChance(1 / 52000 / 10, tt, 'en')).toBe('1 in 520,000')
+    expect(formatChance(0, tt, 'en')).toBe('0%')
+    expect(formatLongDuration(2400, tt, 'en')).toBe('40 min')
+    expect(formatLongDuration(34 * 60 + 11, tt, 'en')).toBe('34 min')
+    expect(formatLongDuration(45 * 86400, tt, 'en')).toBe('45 d')
+    expect(formatLongDuration(1.5 * 365.25 * 86400, tt, 'en')).toBe('1.5 y')
+    expect(formatLongDuration(Infinity, tt, 'en')).toBe('—')
   })
 })
 

@@ -6,6 +6,7 @@ import type {
   History,
   Miner,
   Msg,
+  NetworkStatus,
   Pool,
   PoolInput,
   ProfitStatus,
@@ -107,6 +108,7 @@ export const api = {
   /** Compares the coins now; never switches. */
   profitCheck: () => request<ProfitStatus>('POST', 'api/profit/check'),
   timed: () => request<TimedStatus>('GET', 'api/timed'),
+  network: () => request<NetworkStatus>('GET', 'api/network'),
 
   settings: () => request<SettingsPayload>('GET', 'api/settings'),
   /** null resets a setting to its default. */

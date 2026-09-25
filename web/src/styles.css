@@ -615,7 +615,8 @@ td.actions-cell .actions {
 
 /* ---------- profit switching ---------- */
 
-.profit > * + * {
+.profit > * + *,
+.network > * + * {
   margin-top: 10px;
 }
 
@@ -648,16 +649,23 @@ td.actions-cell .actions {
   color: var(--bad);
 }
 
-.profit .table-wrap {
+.profit .table-wrap,
+.network .table-wrap {
   padding: 0;
 }
 
-.profit tr.muted td {
+.profit tr.muted td,
+.network tr.muted td {
   color: var(--muted);
 }
 
-.profit > p {
+.profit > p,
+.network > p {
   margin-bottom: 0;
+}
+
+.network > p:first-child {
+  margin-top: 0;
 }
 
 .data-table summary {

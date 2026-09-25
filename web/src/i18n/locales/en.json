@@ -37,7 +37,10 @@
     "bytes": "{{value}} B",
     "kb": "{{value}} KB",
     "mb": "{{value}} MB",
-    "gb": "{{value}} GB"
+    "gb": "{{value}} GB",
+    "y_one": "{{value}} year",
+    "y_other": "{{value}} years",
+    "oneIn": "1 in {{n}}"
   },
   "login": {
     "username": "Username",
@@ -523,5 +526,21 @@
     "now": "On {{pool}} until {{until}}, then back to {{home}}.",
     "plan": "{{pool}} for {{length}} every {{every}}; next at {{next}}.",
     "failed": "The last switch failed: {{error}}"
+  },
+  "network": {
+    "title": "Network difficulty and solo odds",
+    "coin": "Coin",
+    "difficulty": "Difficulty",
+    "vs24": "vs 24 h average",
+    "reward": "Block reward",
+    "hour": "Chance per hour",
+    "day": "Chance per day",
+    "mean": "One block every",
+    "mined": "in pools",
+    "farm": "Chances of the whole farm at {{hashrate}} (10-minute estimate) mining the coin solo.",
+    "noHashrate": "No hashrate now: the chances appear once miners send shares.",
+    "timed": "With the timer ({{pool}}, {{coin}}: {{length}} every {{every}}): chance per day {{chance}}, one block every {{mean}} on average.",
+    "note": "Latest difficulty from WhatToMine, refreshed every 10 minutes. A chance is a probability, not a schedule: a block can come tomorrow or in ten years. Lower difficulty raises the earnings on a pool of that coin too.",
+    "noData": "No network data: {{error}}"
   }
 }

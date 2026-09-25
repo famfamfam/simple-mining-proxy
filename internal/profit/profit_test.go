@@ -46,7 +46,8 @@ func TestParseWhatToMine(t *testing.T) {
 		t.Fatalf("coins %d, BTCUSD %v", len(m.Coins), m.BTCUSD)
 	}
 	btc, bch := m.Coins["BTC"], m.Coins["BCH"]
-	if btc.PriceBTC != 1 || btc.BlockReward != 3.147762756136364 || m.Coins["DGB"].Difficulty != 430030207.2203099 {
+	if btc.PriceBTC != 1 || btc.BlockReward != 3.147762756136364 || m.Coins["DGB"].Difficulty != 430030207.2203099 ||
+		btc.Difficulty != 132757073449487.86 || btc.DifficultyNow != 132757073449487.5 || m.Coins["DGB"].DifficultyNow != 430030207.2203099 {
 		t.Fatalf("coins: %+v", m.Coins)
 	}
 	// About 4.8e-7 BTC (≈ $0.04) per TH/s a day: the hashprice of Sept 2026.

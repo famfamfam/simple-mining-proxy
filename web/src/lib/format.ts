@@ -93,6 +93,26 @@ export function formatDuration(totalSec: number, t: TFunction): string {
   return parts.slice(0, 2).join(' ')
 }
 
+/** A long average time: "40 min", "3 h 20 min", "45 d", "1.5 years". */
+export function formatLongDuration(sec: number, t: TFunction, locale: string): string {
+  if (!Number.isFinite(sec) || sec <= 0) return '—'
+  const year = 365.25 * 86400
+  if (sec >= year) {
+    const years = sec / year
+    const rounded = years >= 10 ? Math.round(years) : Math.round(years * 10) / 10
+    return t('units.y', { count: rounded, value: rounded.toLocaleString(locale) })
+  }
+  if (sec >= 2 * 86400) return t('units.d', { value: Math.round(sec / 86400) })
+  return formatDuration(sec >= 600 ? Math.round(sec / 60) * 60 : sec, t)
+}
+
+/** A probability: "12%", "0.034%", or "1 in 52,000" when tiny. */
+export function formatChance(p: number, t: TFunction, locale: string): string {
+  if (!(p > 0)) return '0%'
+  if (p >= 0.00001) return `${(p * 100).toLocaleString(locale, { maximumSignificantDigits: 2 })}%`
+  return t('units.oneIn', { n: Math.round(1 / p).toLocaleString(locale) })
+}
+
 export function formatAgo(iso: string | null | undefined, t: TFunction, now = Date.now()): string {
   if (!iso) return '—'
   const sec = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000))

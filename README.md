@@ -230,6 +230,8 @@ The time on the timer pool starts at multiples of the period: with 30 minutes, a
 - A restart in the middle does not strand the farm: the way back is saved in `/data/timed.json`.
 - Profit switching waits with its scheduled check until the farm is back, and compares coins for the pool it returns to.
 
+The Dashboard shows the network difficulty of every coin (latest and against the 24-hour average) and the farm's chances to find a block solo at its current hashrate: per hour, per day and the average time to a block, plus the chance per day with the timer. The data comes from WhatToMine and is cached for 10 minutes; the panel works with profit switching off.
+
 Every switch reconnects all miners within `switch_drain`, so a 30-minute period costs four reconnects an hour. Switching away from a PPLNS pool also loses part of its reward window.
 
 ## API
@@ -258,6 +260,7 @@ The admin UI uses a JSON API under `/api/`. Scripts authenticate with `Authoriza
 | GET | `/api/profit` | Profit switching status and the last report |
 | POST | `/api/profit/check` | Compare the coins now; never switches |
 | GET | `/api/timed` | Timed switching: target pool, current window, next start |
+| GET | `/api/network` | Latest and 24-hour difficulty, block reward and price of the coins |
 
 Errors have the form `{"error": "validation", "key": "...", "params": {...}, "message": "..."}` with status 400, 404, 409 or 422 (pool check failed). `message` is English text for scripts; the UI translates `key` with `params`.
 
@@ -267,7 +270,7 @@ Allow the Stratum ports only from your farms' IP addresses where you can. Ports 
 
 `max_conn_per_ip` is off by default because a farm usually connects from a single NAT address. If you turn it on, leave room above the number of miners behind one address.
 
-With profit switching on, the proxy makes one outgoing HTTPS request to whattomine.com per interval.
+The proxy makes outgoing HTTPS requests to whattomine.com: with profit switching on, once per interval, and while the Dashboard is open, at most once every 10 minutes for the network panel.
 
 ## Operations
 

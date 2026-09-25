@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
-import { useEvents, useHistory, usePools, useProfit, useStatus, useTimed } from '../api/queries'
+import { useEvents, useHistory, useNetwork, usePools, useProfit, useStatus, useTimed } from '../api/queries'
 import type { ConnString, Pool, Status } from '../api/types'
 import { HealthBadge, ModeBadge } from '../components/Badges'
 import { CopyButton } from '../components/CopyButton'
@@ -10,6 +10,7 @@ import { TimeChart } from '../components/TimeChart'
 import { FallbackEditor } from '../features/pools/FallbackEditor'
 import { PoolEditor } from '../features/pools/PoolEditor'
 import { PoolsTable } from '../features/pools/PoolsTable'
+import { SoloOdds } from '../features/network/SoloOdds'
 import { ProfitPanel } from '../features/profit/ProfitPanel'
 import { TestDialog } from '../features/pools/TestDialog'
 import { usePoolActions } from '../features/pools/usePoolActions'
@@ -79,6 +80,20 @@ function ProfitSection(props: { pools: Pool[]; hashrateTHs: number; onSwitch: (p
     <>
       <h2>{t('profit.title')}</h2>
       <ProfitPanel status={profit.data} {...props} />
+    </>
+  )
+}
+
+/** Network difficulty and the farm's solo odds. */
+function NetworkSection({ pools, hashrateTHs }: { pools: Pool[]; hashrateTHs: number }) {
+  const { t } = useTranslation()
+  const network = useNetwork()
+  const timed = useTimed()
+  if (!network.data) return null
+  return (
+    <>
+      <h2>{t('network.title')}</h2>
+      <SoloOdds network={network.data} hashrateTHs={hashrateTHs} pools={pools} timed={timed.data} />
     </>
   )
 }
@@ -218,6 +233,7 @@ export function DashboardPage() {
           <TimedPanel pools={pools.data} />
 
           <ProfitSection pools={pools.data} hashrateTHs={status.data.hashrate_ths} onSwitch={(p) => void actions.switchPool(p)} />
+          <NetworkSection pools={pools.data} hashrateTHs={status.data.hashrate_ths} />
 
           <h2>
             {t('dashboard.recentEvents')}{' '}

@@ -262,7 +262,10 @@ export interface CoinView {
   name: string
   price_btc: number
   price_usd: number
+  /** 24-hour average network difficulty. */
   difficulty: number
+  /** Latest network difficulty. */
+  difficulty_now: number
   block_reward: number
   revenue_btc: number
   revenue_usd: number
@@ -293,6 +296,14 @@ export interface ProfitStatus {
   next_run: string | null
   btc_usd: number
   report: ProfitReport | null
+}
+
+/** Market data for the solo odds; coins carry no pools here. */
+export interface NetworkStatus {
+  fetched: string | null
+  btc_usd: number
+  coins: CoinView[]
+  error?: string
 }
 
 export interface TimedStatus {

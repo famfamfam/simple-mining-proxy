@@ -76,6 +76,26 @@ func TestTimedAPI(t *testing.T) {
 	}
 }
 
+// The network panel works with profit switching off.
+func TestNetworkAPI(t *testing.T) {
+	e := newEnv(t)
+	w := e.do("GET", "/api/network", "", bearer)
+	var body struct {
+		Fetched *string `json:"fetched"`
+		BTCUSD  float64 `json:"btc_usd"`
+		Coins   []struct {
+			Tag           string  `json:"tag"`
+			DifficultyNow float64 `json:"difficulty_now"`
+		} `json:"coins"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil || w.Code != http.StatusOK {
+		t.Fatalf("network: %d %s", w.Code, w.Body)
+	}
+	if body.Fetched == nil || body.BTCUSD != 80000 || len(body.Coins) != 1 || body.Coins[0].Tag != "BTC" {
+		t.Fatalf("network: %s", w.Body)
+	}
+}
+
 func TestProfitAPI(t *testing.T) {
 	e := newEnv(t)
 	w := e.do("GET", "/api/profit", "", bearer)

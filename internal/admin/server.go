@@ -76,6 +76,7 @@ func New(d Deps) http.Handler {
 	api("GET /api/profit", s.profitStatus)
 	api("POST /api/profit/check", s.profitCheck)
 	api("GET /api/timed", s.timedStatus)
+	api("GET /api/network", s.network)
 	api("GET /api/pools", s.listPools)
 	api("POST /api/pools", s.createPool)
 	api("PUT /api/pools/{id}", s.updatePool)
@@ -426,6 +427,13 @@ func (s *Server) profitStatus(w http.ResponseWriter, r *http.Request) error {
 func (s *Server) profitCheck(w http.ResponseWriter, r *http.Request) error {
 	s.d.Profit.Check(r.Context(), false)
 	writeJSON(w, http.StatusOK, s.d.Profit.Status())
+	return nil
+}
+
+// network is the difficulty, reward and price of the coins, for the solo
+// odds on the Dashboard. Market data is cached, so polling it is cheap.
+func (s *Server) network(w http.ResponseWriter, r *http.Request) error {
+	writeJSON(w, http.StatusOK, s.d.Profit.Network(r.Context()))
 	return nil
 }
 

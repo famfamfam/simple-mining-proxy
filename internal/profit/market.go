@@ -23,13 +23,16 @@ const staleAfter = 6 * time.Hour
 // Coin is the market data of one coin: 24-hour averages when the source has
 // them, so a single block does not decide a switch.
 type Coin struct {
-	Tag         string    `json:"tag"`
-	Name        string    `json:"name"`
-	Difficulty  float64   `json:"difficulty"`
-	BlockReward float64   `json:"block_reward"` // coins per block, fees included
-	PriceBTC    float64   `json:"price_btc"`
-	Updated     time.Time `json:"updated"`
-	Stale       bool      `json:"stale"` // too old or flagged by the source: not used for decisions
+	Tag        string  `json:"tag"`
+	Name       string  `json:"name"`
+	Difficulty float64 `json:"difficulty"`
+	// DifficultyNow is the latest network difficulty, for the solo odds; the
+	// decisions use the 24-hour Difficulty.
+	DifficultyNow float64   `json:"difficulty_now"`
+	BlockReward   float64   `json:"block_reward"` // coins per block, fees included
+	PriceBTC      float64   `json:"price_btc"`
+	Updated       time.Time `json:"updated"`
+	Stale         bool      `json:"stale"` // too old or flagged by the source: not used for decisions
 }
 
 // RevenueBTC is the expected revenue of 1 TH/s over a day, in BTC.
@@ -109,10 +112,11 @@ func parseWhatToMine(r io.Reader, now time.Time) (*Market, error) {
 		}
 		c := Coin{
 			Tag: tag, Name: name,
-			Difficulty:  avg(w.Difficulty24, w.Difficulty),
-			BlockReward: avg(w.BlockReward24, w.BlockReward),
-			PriceBTC:    avg(w.ExchangeRate24, w.ExchangeRate),
-			Updated:     time.Unix(w.Timestamp, 0).UTC(),
+			Difficulty:    avg(w.Difficulty24, w.Difficulty),
+			DifficultyNow: avg(w.Difficulty, w.Difficulty24),
+			BlockReward:   avg(w.BlockReward24, w.BlockReward),
+			PriceBTC:      avg(w.ExchangeRate24, w.ExchangeRate),
+			Updated:       time.Unix(w.Timestamp, 0).UTC(),
 		}
 		if tag == "BTC" {
 			// WhatToMine gives the BTC entry its USD price in exchange_rate.

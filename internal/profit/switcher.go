@@ -41,16 +41,18 @@ const (
 
 // CoinView is one coin of a report. Revenue is for 1 TH/s over a day.
 type CoinView struct {
-	Tag         string   `json:"tag"`
-	Name        string   `json:"name"`
-	PriceBTC    float64  `json:"price_btc"`
-	PriceUSD    float64  `json:"price_usd"` // 0 when unknown
-	Difficulty  float64  `json:"difficulty"`
-	BlockReward float64  `json:"block_reward"`
-	RevenueBTC  float64  `json:"revenue_btc"`
-	RevenueUSD  float64  `json:"revenue_usd"`
-	Stale       bool     `json:"stale"`
-	Pools       []string `json:"pools"` // pool ids with this coin that take part
+	Tag        string  `json:"tag"`
+	Name       string  `json:"name"`
+	PriceBTC   float64 `json:"price_btc"`
+	PriceUSD   float64 `json:"price_usd"`  // 0 when unknown
+	Difficulty float64 `json:"difficulty"` // 24-hour average
+	// DifficultyNow is the latest network difficulty.
+	DifficultyNow float64  `json:"difficulty_now"`
+	BlockReward   float64  `json:"block_reward"`
+	RevenueBTC    float64  `json:"revenue_btc"`
+	RevenueUSD    float64  `json:"revenue_usd"`
+	Stale         bool     `json:"stale"`
+	Pools         []string `json:"pools"` // pool ids with this coin that take part
 }
 
 // Report is the result of one check.
@@ -263,6 +265,54 @@ func (s *Switcher) marketData(ctx context.Context) (*Market, error) {
 // are listed only when a pool mines them.
 var compared = map[string]bool{"BTC": true, "BCH": true, "XEC": true, "DGB": true, "FB": true}
 
+// coinViews lists the compared coins and those mined by a pool, the most
+// profitable first. Pools of a coin view are the ones in byCoin.
+func coinViews(m *Market, mined map[string]bool, byCoin map[string][]state.Pool) []CoinView {
+	out := []CoinView{}
+	for _, c := range m.Coins {
+		if !compared[c.Tag] && !mined[c.Tag] {
+			continue
+		}
+		cv := CoinView{
+			Tag: c.Tag, Name: c.Name, PriceBTC: c.PriceBTC, Difficulty: c.Difficulty, DifficultyNow: c.DifficultyNow,
+			BlockReward: c.BlockReward, RevenueBTC: c.RevenueBTC(), Stale: c.Stale, Pools: []string{},
+		}
+		if m.BTCUSD > 0 {
+			cv.PriceUSD = c.PriceBTC * m.BTCUSD
+			cv.RevenueUSD = cv.RevenueBTC * m.BTCUSD
+		}
+		for _, p := range byCoin[c.Tag] {
+			cv.Pools = append(cv.Pools, p.ID)
+		}
+		out = append(out, cv)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].RevenueBTC > out[j].RevenueBTC })
+	return out
+}
+
+// Network is the market data for the network panel: difficulty, reward and
+// price of the listed coins. It shares the cache with the checks, so it asks
+// the source at most once per cacheFor.
+type Network struct {
+	Fetched *time.Time `json:"fetched"`
+	BTCUSD  float64    `json:"btc_usd"`
+	Coins   []CoinView `json:"coins"` // pools are left empty
+	Error   string     `json:"error,omitempty"`
+}
+
+func (s *Switcher) Network(ctx context.Context) Network {
+	m, err := s.marketData(ctx)
+	if err != nil {
+		return Network{Coins: []CoinView{}, Error: err.Error()}
+	}
+	mined := map[string]bool{}
+	for _, p := range s.d.Pools.Snapshot().Pools {
+		mined[p.Coin] = true
+	}
+	fetched := m.Fetched
+	return Network{Fetched: &fetched, BTCUSD: m.BTCUSD, Coins: coinViews(m, mined, nil)}
+}
+
 // decide fills the coins and the decision of rep from the market and the
 // current pools, without switching.
 func (s *Switcher) decide(rep *Report, m *Market) {
@@ -275,24 +325,7 @@ func (s *Switcher) decide(rep *Report, m *Market) {
 			byCoin[p.Coin] = append(byCoin[p.Coin], p)
 		}
 	}
-	for _, c := range m.Coins {
-		if !compared[c.Tag] && !mined[c.Tag] {
-			continue
-		}
-		cv := CoinView{
-			Tag: c.Tag, Name: c.Name, PriceBTC: c.PriceBTC, Difficulty: c.Difficulty,
-			BlockReward: c.BlockReward, RevenueBTC: c.RevenueBTC(), Stale: c.Stale, Pools: []string{},
-		}
-		if m.BTCUSD > 0 {
-			cv.PriceUSD = c.PriceBTC * m.BTCUSD
-			cv.RevenueUSD = cv.RevenueBTC * m.BTCUSD
-		}
-		for _, p := range byCoin[c.Tag] {
-			cv.Pools = append(cv.Pools, p.ID)
-		}
-		rep.Coins = append(rep.Coins, cv)
-	}
-	sort.Slice(rep.Coins, func(i, j int) bool { return rep.Coins[i].RevenueBTC > rep.Coins[j].RevenueBTC })
+	rep.Coins = coinViews(m, mined, byCoin)
 
 	activeID := snap.Active
 	if home := s.home(); home != "" {
