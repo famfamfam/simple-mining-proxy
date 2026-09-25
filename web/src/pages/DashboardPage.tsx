@@ -111,6 +111,12 @@ function TimedPanel({ pools }: { pools: Pool[] }) {
     text = t('timed.noTarget')
   } else if (s.home && s.until) {
     text = t('timed.now', { pool: name(s.target), until: formatTime(s.until, loc), home: name(s.home) })
+  } else if (s.waiting) {
+    text = t('timed.waiting', {
+      pool: name(s.target),
+      factor: s.hardness.toLocaleString(loc, { maximumFractionDigits: s.hardness < 10 ? 1 : 0 }),
+      left: formatDuration(s.left, t),
+    })
   } else {
     text = t('timed.plan', {
       pool: name(s.target),

@@ -20,6 +20,7 @@ import (
 	"github.com/famfamfam/simple-mining-proxy/internal/history"
 	"github.com/famfamfam/simple-mining-proxy/internal/pool"
 	"github.com/famfamfam/simple-mining-proxy/internal/profit"
+	"github.com/famfamfam/simple-mining-proxy/internal/rtt"
 	"github.com/famfamfam/simple-mining-proxy/internal/session"
 	"github.com/famfamfam/simple-mining-proxy/internal/settings"
 	"github.com/famfamfam/simple-mining-proxy/internal/state"
@@ -39,6 +40,7 @@ type Deps struct {
 	History  *history.Recorder
 	Profit   *profit.Switcher
 	Timed    *timed.Switcher
+	RTT      *rtt.Watcher // eCash real-time target, for the network panel
 	Events   *events.Log
 	Certs    *tlsutil.Certs // nil when the TLS listener is off
 	Started  time.Time
@@ -433,7 +435,16 @@ func (s *Server) profitCheck(w http.ResponseWriter, r *http.Request) error {
 // network is the difficulty, reward and price of the coins, for the solo
 // odds on the Dashboard. Market data is cached, so polling it is cheap.
 func (s *Server) network(w http.ResponseWriter, r *http.Request) error {
-	writeJSON(w, http.StatusOK, s.d.Profit.Network(r.Context()))
+	body := struct {
+		profit.Network
+		RTT *rtt.Status `json:"rtt"` // eCash as the watched pool sees it; null without an eCash pool
+	}{Network: s.d.Profit.Network(r.Context())}
+	if s.d.RTT != nil {
+		if st := s.d.RTT.Status(); st.Pool != "" {
+			body.RTT = &st
+		}
+	}
+	writeJSON(w, http.StatusOK, body)
 	return nil
 }
 

@@ -9,7 +9,7 @@ import { errorText, translateMsg } from '../../i18n/messages'
 import { hostPort, parseAddresses, type ParsedAddresses } from '../../lib/addresses'
 import { TestDialog } from './TestDialog'
 
-const coins = ['BTC', 'BCH', 'XEC', 'DGB', 'FB']
+const coins = ['BTC', 'BCH', 'BSV', 'XEC', 'DGB', 'FB']
 
 type Errors = Partial<Record<'name' | 'coin' | 'addresses' | 'username' | 'password' | 'tls_skip_verify', string>>
 

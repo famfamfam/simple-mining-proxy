@@ -15,8 +15,9 @@ It was written for BTC and BCH pools. Pools for XEC, DigiByte (SHA-256) and Frac
 - Pool switches reconnect miners gradually over a configurable window.
 - Accepted and rejected shares, reject reasons and a 10-minute hashrate estimate, per pool and per miner.
 - Charts of hashrate, shares and miners from one hour to one year, stored on disk, including a history for each miner.
-- Optional profit switching between SHA-256 coins using WhatToMine data: advice only, or automatic.
-- Optional timed switching: part of every period on another pool, for example 10 minutes of every 30 on a solo pool.
+- Optional profit switching between SHA-256 coins (BTC, BCH, BSV, XEC, DGB, FB) using WhatToMine and WhatsOnChain data: advice only, or automatic.
+- Optional timed switching: part of every period on another pool, for example 10 minutes of every 30 on a solo pool. On eCash it waits out the minutes after a block, when the real-time target makes a solo block practically impossible.
+- Network difficulty and the farm's solo odds for every coin, with eCash's Real Time Targeting taken into account.
 - Runtime settings with descriptions and validation, applied without a restart.
 - A self-signed TLS certificate on first start, or your own certificate, reloaded when it changes.
 - Connection limits and timeouts against slow or broken clients.
@@ -206,11 +207,13 @@ On the Miners page, click a miner to see its charts. The same page lists miners 
 
 The proxy can compare the SHA-256 coins of your pools at a set interval and pick the most profitable one, for example BTC or BCH.
 
-1. Add pools for different coins (the Coin field: BTC, BCH, XEC, DGB or FB) and tick "Take part in profit switching" in each of them.
+1. Add pools for different coins (the Coin field: BTC, BCH, BSV, XEC, DGB or FB) and tick "Take part in profit switching" in each of them.
 2. In Settings, set profit switching to Advise, which shows the result on the Dashboard with a button to switch, or to Auto, which switches by itself.
 3. Adjust the interval (24 hours by default) and the margin (5 % by default: another coin must earn at least that much more than the current one).
 
-Revenue is estimated from 24-hour averages of network difficulty, block reward (fees included) and price from [WhatToMine](https://whattomine.com): one request per check, no API key. Pool fees and payout schemes are not taken into account. When there is no data, or it is stale, nothing changes.
+Revenue is estimated from 24-hour averages of network difficulty, block reward (fees included) and price from [WhatToMine](https://whattomine.com): one request per check, no API key. WhatToMine does not list BSV; its difficulty and price come from [WhatsOnChain](https://whatsonchain.com), and its block reward is the subsidy (BSV fees are negligible). Pool fees and payout schemes are not taken into account. When there is no data, or it is stale, nothing changes.
+
+eCash (XEC) needs a correction. Its nodes enforce Real Time Targeting: besides the target in the block header, a block has to meet a real-time target that depends on how long ago the last blocks arrived. A block 30 seconds after the previous one has to be about 800 times harder, after a minute 25 times, after two minutes it no longer matters. Nobody finds blocks in those minutes, and the difficulty algorithm lowers the header difficulty so that blocks still come every 10 minutes. A difficulty-based estimate therefore overstates what miners get; simulating the node's rule gives 0.757 of it, and XEC revenue and odds are multiplied by that. The formula is the one in Bitcoin ABC, `src/policy/block/rtt.cpp`.
 
 A profit switch works like a manual one: the target pool is checked, the change is saved and miners reconnect gradually. Its reason, `profit`, shows in the events and in the last switch on the Dashboard. If the active pool does not take part, it is left alone. "Check now" only shows the decision and never switches. The time of the last scheduled check is stored in `/data/profit.json`, so a restart does not move the schedule.
 
@@ -223,14 +226,18 @@ Timed switching sends the farm to another pool for part of every period and brin
 1. Add the pool, for a solo pool usually with your payout address in the login template (`bc1q....{worker}`), and tick "Switch to this pool on the timer" in its editor. Only one pool can have it.
 2. In Settings, turn on timed switching and set the period (30 minutes by default) and the time on the timer pool (10 minutes by default).
 
-The time on the timer pool starts at multiples of the period: with 30 minutes, at :00 and :30. At that moment the timer pool is checked and made active; when the time is up, the farm returns to the pool that was active before, and the fallback order from before is put back. While the farm is on the timer pool, the pool it came from is the first fallback. Both switches show in the events with the reason `timer`.
+Periods start at multiples of the period: with 30 minutes, at :00 and :30. From the start of each, the farm spends the set time on the timer pool: the timer pool is checked and made active, and when the time is up the farm returns to the pool that was active before, with the fallback order from before. While the farm is on the timer pool, the pool it came from is the first fallback. The switches show in the events with the reason `timer`.
 
 - If the timer pool fails its check, the farm stays where it is until the next period.
 - If you switch pools by hand during that time, your choice stays and the timer does not switch back.
 - A restart in the middle does not strand the farm: the way back is saved in `/data/timed.json`.
 - Profit switching waits with its scheduled check until the farm is back, and compares coins for the pool it returns to.
 
-The Dashboard shows the network difficulty of every coin (latest and against the 24-hour average) and the farm's chances to find a block solo at its current hashrate: per hour, per day and the average time to a block, plus the chance per day with the timer. The data comes from WhatToMine and is cached for 10 minutes; the panel works with profit switching off.
+When the timer pool mines eCash, the timer follows the real-time target (see profit switching above). It does not go to the pool while a block would be more than 1.2 times harder than its header says, which is the first two minutes or so after a block. When a block arrives while the farm is there and the next one becomes more than twice as hard, the farm goes back to the other pool until that eases, and the time is made up later in the period. With less than a minute of time left, it just stays. When a period ends while the farm is on the timer pool, it stays there for the new period instead of leaving and coming back.
+
+To know when eCash blocks arrive, the proxy keeps one quiet Stratum connection to an eCash pool (the timer pool if it mines eCash, else the first one) and watches its jobs: a job with a new previous-block hash means a block. It logs in as the test worker, which the pool may show as an idle worker. The times of the 17 blocks before are read once from Blockchair at start.
+
+The Dashboard shows the network difficulty of every coin (latest and against the 24-hour average) and the farm's chances to find a block solo at its current hashrate: per hour, per day and the average time to a block, plus the chance per day with the timer. For eCash it also shows the real-time difficulty now and when the last block came, like solo pools do. The market data is cached for 10 minutes; the panel works with profit switching off.
 
 Every switch reconnects all miners within `switch_drain`, so a 30-minute period costs four reconnects an hour. Switching away from a PPLNS pool also loses part of its reward window.
 
@@ -259,8 +266,8 @@ The admin UI uses a JSON API under `/api/`. Scripts authenticate with `Authoriza
 | GET | `/api/history/workers?from=&to=` | Every miner seen in the range |
 | GET | `/api/profit` | Profit switching status and the last report |
 | POST | `/api/profit/check` | Compare the coins now; never switches |
-| GET | `/api/timed` | Timed switching: target pool, current window, next start |
-| GET | `/api/network` | Latest and 24-hour difficulty, block reward and price of the coins |
+| GET | `/api/timed` | Timed switching: target pool, time still due, next period, eCash wait |
+| GET | `/api/network` | Difficulty, block reward, price and efficiency of the coins; eCash real-time target |
 
 Errors have the form `{"error": "validation", "key": "...", "params": {...}, "message": "..."}` with status 400, 404, 409 or 422 (pool check failed). `message` is English text for scripts; the UI translates `key` with `params`.
 
@@ -270,7 +277,7 @@ Allow the Stratum ports only from your farms' IP addresses where you can. Ports 
 
 `max_conn_per_ip` is off by default because a farm usually connects from a single NAT address. If you turn it on, leave room above the number of miners behind one address.
 
-The proxy makes outgoing HTTPS requests to whattomine.com: with profit switching on, once per interval, and while the Dashboard is open, at most once every 10 minutes for the network panel.
+The proxy makes outgoing HTTPS requests for market data to whattomine.com and api.whatsonchain.com: with profit switching on, once per interval, and while the Dashboard is open, at most once every 10 minutes. With an eCash pool configured, it also reads recent block times from api.blockchair.com once at start and keeps one Stratum connection to that pool.
 
 ## Operations
 
@@ -321,6 +328,7 @@ For UI work, run `npm run dev` in `web/`: Vite reloads the page on changes and f
 | `internal/pool` | Pools, address checks, failover and failback, drain |
 | `internal/stats`, `internal/history` | Counters in memory, history on disk |
 | `internal/profit` | Coin revenue data and profit switching |
+| `internal/rtt` | eCash Real Time Targeting: the formula and the connection that sees blocks arrive |
 | `internal/timed` | Timed switching to another pool and back |
 | `internal/admin`, `internal/apierr` | REST API, login and brute-force protection, error keys |
 | `internal/settings`, `internal/state` | Runtime settings, `state.json` |

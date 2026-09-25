@@ -162,7 +162,7 @@
     "addressEmpty": "enter at least one host:port address",
     "profit": "Profit switching",
     "profitSwitch": "Take part in profit switching",
-    "profitHelp": "Profit switching compares the coins of the pools marked here and can make the most profitable one active. The coin must be set: BTC, BCH, XEC, DGB or FB.",
+    "profitHelp": "Profit switching compares the coins of the pools marked here and can make the most profitable one active. The coin must be set: BTC, BCH, BSV, XEC, DGB or FB.",
     "timed": "Timer",
     "timedTarget": "Switch to this pool on the timer",
     "timedHelp": "For part of every period (Settings → Timed switching) the farm mines on this pool, for example a solo pool, and then returns. Only one pool can have this: marking it here clears it on the other pool."
@@ -525,7 +525,8 @@
     "noTarget": "Timed switching is on, but no pool is marked: tick “Switch to this pool on the timer” in the pool editor.",
     "now": "On {{pool}} until {{until}}, then back to {{home}}.",
     "plan": "{{pool}} for {{length}} every {{every}}; next at {{next}}.",
-    "failed": "The last switch failed: {{error}}"
+    "failed": "The last switch failed: {{error}}",
+    "waiting": "A block just arrived: {{pool}} is x{{factor}} harder right now, so the farm stays here until that eases. Still due in this period: {{left}}."
   },
   "network": {
     "title": "Network difficulty and solo odds",
@@ -541,6 +542,12 @@
     "noHashrate": "No hashrate now: the chances appear once miners send shares.",
     "timed": "With the timer ({{pool}}, {{coin}}: {{length}} every {{every}}): chance per day {{chance}}, one block every {{mean}} on average.",
     "note": "Latest difficulty from WhatToMine, refreshed every 10 minutes. A chance is a probability, not a schedule: a block can come tomorrow or in ten years. Lower difficulty raises the earnings on a pool of that coin too.",
-    "noData": "No network data: {{error}}"
+    "noData": "No network data: {{error}}",
+    "rttHint": "Real Time Targeting: a block right after the previous one has to be much harder, so miners get about {{pct}}% of the blocks the difficulty suggests. The chances include it.",
+    "rttNow": "now {{difficulty}} (x{{factor}})",
+    "rttEasy": "now as in the header",
+    "rttOffline": "no live data from the pool",
+    "lastBlock": "block {{ago}}",
+    "rttNote": "For {{coins}} the chances include Real Time Targeting: right after every block the next one has to be far harder (x25 after a minute), so over time a miner finds about {{pct}}% of what the difficulty alone suggests. The live value comes from the eCash pool."
   }
 }

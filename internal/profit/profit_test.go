@@ -6,6 +6,8 @@ import (
 	"errors"
 	"math"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/famfamfam/simple-mining-proxy/internal/events"
 	"github.com/famfamfam/simple-mining-proxy/internal/pool"
+	"github.com/famfamfam/simple-mining-proxy/internal/rtt"
 	"github.com/famfamfam/simple-mining-proxy/internal/session"
 	"github.com/famfamfam/simple-mining-proxy/internal/settings"
 	"github.com/famfamfam/simple-mining-proxy/internal/state"
@@ -63,6 +66,59 @@ func TestParseWhatToMine(t *testing.T) {
 	}
 	if _, err := parseWhatToMine(strings.NewReader(`{"coins":{}}`), now); err == nil {
 		t.Fatal("empty market accepted")
+	}
+}
+
+// XEC revenue counts the Real Time Target: miners get only part of the
+// block rate its difficulty suggests.
+func TestXECEfficiency(t *testing.T) {
+	m, err := parseWhatToMine(strings.NewReader(asicJSON), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	xec, btc := m.Coins["XEC"], m.Coins["BTC"]
+	if xec.Efficiency != rtt.Efficiency || btc.Efficiency != 1 {
+		t.Fatalf("efficiency XEC %v, BTC %v", xec.Efficiency, btc.Efficiency)
+	}
+	plain := xec
+	plain.Efficiency = 1
+	if r := xec.RevenueBTC() / plain.RevenueBTC(); math.Abs(r-rtt.Efficiency) > 1e-12 {
+		t.Fatalf("XEC revenue ratio %v", r)
+	}
+}
+
+func TestBSVFromWhatsOnChain(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/chain/info":
+			w.Write([]byte(`{"chain":"main","blocks":968363,"difficulty":31101961006.40421}`))
+		case "/exchangerate":
+			w.Write([]byte(`{"rate":21.53,"time":1790371583,"currency":"USD"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	base := func(context.Context) (*Market, error) { return market(0), nil }
+
+	m, err := WithBSV(srv.Client(), srv.URL, base)(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	bsv, ok := m.Coins["BSV"]
+	if !ok || bsv.BlockReward != 3.125 || bsv.Difficulty != 31101961006.40421 ||
+		math.Abs(bsv.PriceBTC-21.53/80000) > 1e-15 || bsv.Stale || bsv.RevenueBTC() <= 0 {
+		t.Fatalf("BSV: %+v", bsv)
+	}
+
+	// WhatsOnChain down: the rest of the market still comes.
+	m, err = WithBSV(srv.Client(), srv.URL+"/nothing", base)(context.Background())
+	if err != nil || len(m.Coins) != 2 {
+		t.Fatalf("without BSV: %v %+v", err, m)
+	}
+	// The subsidy halves every 210,000 blocks.
+	if c, _ := bsvCoin(1_049_999, 1, 1, 1, now); c.BlockReward != 1.5625 {
+		t.Fatalf("after the 2028 halving: %v", c.BlockReward)
 	}
 }
 

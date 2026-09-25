@@ -85,6 +85,7 @@ type env struct {
 	ev    *events.Log
 	clock time.Time
 	path  string
+	hard  float64 // what Hardness reports for the target
 }
 
 // newEnv has pools main (active), backup (fallback) and solo (the target).
@@ -114,14 +115,15 @@ func newEnv(t *testing.T, solo state.Address) *env {
 	}
 	ev := events.New(100)
 	mgr := pool.NewManager(st, set, session.NewRegistry(ev), ev)
-	e := &env{t: t, set: set, mgr: mgr, ev: ev, clock: t0, path: filepath.Join(dir, "timed.json")}
+	e := &env{t: t, set: set, mgr: mgr, ev: ev, clock: t0, path: filepath.Join(dir, "timed.json"), hard: 1}
 	e.sw = e.restart()
 	return e
 }
 
 // restart builds a new switcher on the same state file, as after a restart.
 func (e *env) restart() *Switcher {
-	sw := New(Deps{Settings: e.set, Pools: e.mgr, Events: e.ev, Path: e.path})
+	sw := New(Deps{Settings: e.set, Pools: e.mgr, Events: e.ev, Path: e.path,
+		Hardness: func(state.Pool) float64 { return e.hard }})
 	sw.now = func() time.Time { return e.clock }
 	return sw
 }
@@ -140,31 +142,11 @@ func (e *env) want(active string, fallback ...string) {
 	}
 }
 
-func TestWindowBoundaries(t *testing.T) {
-	for _, c := range []struct {
-		at     time.Duration
-		start  time.Duration
-		inside bool
-	}{
-		{0, 0, true},
-		{9*time.Minute + 59*time.Second, 0, true},
-		{10 * time.Minute, 0, false},
-		{29 * time.Minute, 0, false},
-		{30 * time.Minute, 30 * time.Minute, true},
-		{45 * time.Minute, 30 * time.Minute, false},
-	} {
-		start, in := window(t0.Add(c.at), 30*time.Minute, 10*time.Minute)
-		if !start.Equal(t0.Add(c.start)) || in != c.inside {
-			t.Errorf("%s: start %s, in %v", c.at, start.Sub(t0), in)
-		}
-	}
-}
-
 // A window moves the farm to the target and back, and the fallback order is
 // what it was before, not the target first.
 func TestSwitchesToTargetAndBack(t *testing.T) {
 	e := newEnv(t, stratumPool(t))
-	e.at(time.Second)
+	e.at(0)
 	e.want("solo", "main", "backup")
 	if e.sw.Home() != "main" {
 		t.Fatalf("home %q", e.sw.Home())
@@ -189,7 +171,7 @@ func TestSwitchesToTargetAndBack(t *testing.T) {
 // again only in the next window.
 func TestFailedTargetIsTriedOncePerWindow(t *testing.T) {
 	e := newEnv(t, deadPool(t))
-	e.at(time.Second)
+	e.at(0)
 	e.want("main", "backup")
 	if st := e.sw.Status(); st.Error == "" || st.Home != "" {
 		t.Fatalf("status: %+v", st)
@@ -216,7 +198,7 @@ func TestFailedTargetIsTriedOncePerWindow(t *testing.T) {
 // anywhere at the end of it.
 func TestManualSwitchDuringWindowStands(t *testing.T) {
 	e := newEnv(t, stratumPool(t))
-	e.at(time.Second)
+	e.at(0)
 	if _, err := e.mgr.Activate(context.Background(), "backup", true); err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +211,7 @@ func TestManualSwitchDuringWindowStands(t *testing.T) {
 // Turning the timer off, or unmarking the target, ends the window at once.
 func TestTurningOffReturns(t *testing.T) {
 	e := newEnv(t, stratumPool(t))
-	e.at(time.Second)
+	e.at(0)
 	e.want("solo", "main", "backup")
 	p, err := e.set.Prepare(map[string]json.RawMessage{"timed_switch": json.RawMessage(`"off"`)})
 	if err != nil {
@@ -240,7 +222,7 @@ func TestTurningOffReturns(t *testing.T) {
 	e.want("main", "backup")
 
 	e2 := newEnv(t, stratumPool(t))
-	e2.at(time.Second)
+	e2.at(0)
 	no := false
 	if _, _, err := e2.mgr.Update("solo", pool.Input{TimedTarget: &no}, false); err != nil {
 		t.Fatal(err)
@@ -253,7 +235,7 @@ func TestTurningOffReturns(t *testing.T) {
 // it returns the farm right away.
 func TestRestartKeepsTheWayBack(t *testing.T) {
 	e := newEnv(t, stratumPool(t))
-	e.at(time.Second)
+	e.at(0)
 	e.sw = e.restart()
 	e.at(5 * time.Minute)
 	e.want("solo", "main", "backup")
@@ -268,7 +250,7 @@ func TestRestartKeepsTheWayBack(t *testing.T) {
 func TestCrashRightAfterSwitchReturns(t *testing.T) {
 	e := newEnv(t, stratumPool(t))
 	// What leave saves before switching, then the switch itself.
-	e.sw.save(&away{Start: t0, Target: "solo", Home: "main", Fallback: []string{"backup"}})
+	e.sw.save(&away{Period: t0, Target: "solo", Home: "main", Fallback: []string{"backup"}})
 	if _, err := e.mgr.ActivateFor(context.Background(), "solo", "timer"); err != nil {
 		t.Fatal(err)
 	}
@@ -282,7 +264,7 @@ func TestCrashRightAfterSwitchReturns(t *testing.T) {
 // Changing the fallback order during a window keeps the new order.
 func TestFallbackEditedDuringWindowIsKept(t *testing.T) {
 	e := newEnv(t, stratumPool(t))
-	e.at(time.Second)
+	e.at(0)
 	if err := e.mgr.SetFallback([]string{"backup", "main"}); err != nil {
 		t.Fatal(err)
 	}
@@ -290,9 +272,86 @@ func TestFallbackEditedDuringWindowIsKept(t *testing.T) {
 	e.want("main", "backup")
 }
 
+// Right after a block on a chain with a real-time target the farm does not
+// go to the target; its time there starts once the target eases.
+func TestWaitsWhileBlocksAreHard(t *testing.T) {
+	e := newEnv(t, stratumPool(t))
+	e.hard = 50
+	e.at(0)
+	e.want("main", "backup")
+	if st := e.sw.Status(); !st.Waiting || st.Left != 600 || st.Hardness != 50 {
+		t.Fatalf("waiting: %+v", st)
+	}
+	e.hard = 1.1
+	e.at(2 * time.Minute)
+	e.want("solo", "main", "backup")
+	e.at(11*time.Minute + 59*time.Second)
+	e.want("solo", "main", "backup")
+	e.at(12 * time.Minute) // 10 minutes on the target
+	e.want("main", "backup")
+}
+
+// A block while on the target sends the farm back until the target eases;
+// the time is made up later in the period.
+func TestPausesAfterABlock(t *testing.T) {
+	e := newEnv(t, stratumPool(t))
+	e.at(0)
+	e.hard = 30
+	e.at(4 * time.Minute) // a block: pause after 4 minutes on the target
+	e.want("main", "backup")
+	e.at(5 * time.Minute)
+	if st := e.sw.Status(); !st.Waiting || st.Left != 360 {
+		t.Fatalf("paused: %+v", st)
+	}
+	e.hard = 1
+	e.at(6 * time.Minute)
+	e.want("solo", "main", "backup")
+	e.at(11*time.Minute + 59*time.Second)
+	e.want("solo", "main", "backup")
+	e.at(12 * time.Minute) // 4 + 6 minutes
+	e.want("main", "backup")
+	e.at(20 * time.Minute)
+	e.want("main", "backup")
+}
+
+// With less than a minute left a pause is not worth two reconnects.
+func TestNoPauseAtTheEnd(t *testing.T) {
+	e := newEnv(t, stratumPool(t))
+	e.at(0)
+	e.hard = 30
+	e.at(9*time.Minute + 30*time.Second)
+	e.want("solo", "main", "backup")
+	e.at(10 * time.Minute)
+	e.want("main", "backup")
+}
+
+// When a new period begins while the farm is on the target, it stays there:
+// leaving and coming back would only cost two reconnects.
+func TestCarriesOverIntoTheNextPeriod(t *testing.T) {
+	e := newEnv(t, stratumPool(t))
+	e.at(0)
+	e.hard = 30
+	e.at(time.Minute) // pause after a minute
+	e.at(24 * time.Minute)
+	e.want("main", "backup")
+	e.hard = 1
+	e.at(25 * time.Minute) // 9 minutes still due, 5 left in the period
+	e.want("solo", "main", "backup")
+	switched := e.mgr.LastSwitch().At
+	e.at(30 * time.Minute) // the next period starts on the target
+	e.want("solo", "main", "backup")
+	if !e.mgr.LastSwitch().At.Equal(switched) {
+		t.Fatal("left the target at the period boundary")
+	}
+	e.at(39*time.Minute + 59*time.Second)
+	e.want("solo", "main", "backup")
+	e.at(40 * time.Minute)
+	e.want("main", "backup")
+}
+
 func TestStatus(t *testing.T) {
 	e := newEnv(t, stratumPool(t))
-	e.at(time.Second)
+	e.at(0)
 	st := e.sw.Status()
 	if st.Mode != "on" || st.Target != "solo" || st.Home != "main" || st.Period != "30m" || st.Duration != "10m" ||
 		st.Until == nil || !st.Until.Equal(t0.Add(10*time.Minute)) || st.Next == nil || !st.Next.Equal(t0.Add(30*time.Minute)) {

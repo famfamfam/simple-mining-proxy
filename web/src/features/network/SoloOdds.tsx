@@ -1,8 +1,8 @@
 import { useTranslation } from 'react-i18next'
-import type { CoinView, NetworkStatus, Pool, TimedStatus } from '../../api/types'
+import type { CoinView, NetworkStatus, Pool, RttStatus, TimedStatus } from '../../api/types'
 import { locale } from '../../i18n'
 import { parseGoDuration } from '../../lib/duration'
-import { formatChance, formatDifficulty, formatDuration, formatHashrateHs, formatLongDuration } from '../../lib/format'
+import { formatAgo, formatChance, formatDifficulty, formatDuration, formatHashrateHs, formatLongDuration } from '../../lib/format'
 import { blockChance, blockRate } from '../../lib/odds'
 
 const hour = 3600
@@ -24,8 +24,14 @@ export function SoloOdds({ network, hashrateTHs, pools, timed }: SoloOddsProps) 
   // Coins of the configured pools first, then the rest in revenue order.
   const coins = [...network.coins].sort((a, b) => Number(mined.has(b.tag)) - Number(mined.has(a.tag)))
 
-  const chance = (c: CoinView, seconds: number, share = 1) => formatChance(blockChance(hs * share, c.difficulty_now, seconds), t, loc)
-  const mean = (c: CoinView, share = 1) => formatLongDuration(1 / blockRate(hs * share, c.difficulty_now), t, loc)
+  // The block rate a miner really gets: on eCash less than the difficulty
+  // suggests, because of the real-time target after every block.
+  const eff = (c: CoinView) => (c.efficiency > 0 ? c.efficiency : 1)
+  const chance = (c: CoinView, seconds: number, share = 1) =>
+    formatChance(blockChance(hs * share * eff(c), c.difficulty_now, seconds), t, loc)
+  const mean = (c: CoinView, share = 1) => formatLongDuration(1 / blockRate(hs * share * eff(c), c.difficulty_now), t, loc)
+  const rtt = network.rtt
+  const withRTT = coins.filter((c) => eff(c) < 1)
   // Rounded to a tenth first, so a tiny change shows as 0% and not −0%.
   const vs24 = (c: CoinView) => (c.difficulty > 0 ? Math.round((c.difficulty_now / c.difficulty - 1) * 1000) / 10 : 0)
 
@@ -57,10 +63,16 @@ export function SoloOdds({ network, hashrateTHs, pools, timed }: SoloOddsProps) 
               return (
                 <tr key={c.tag} className={mined.has(c.tag) ? undefined : 'muted'}>
                   <td className="primary">
-                    <b>{c.tag}</b> {mined.has(c.tag) && <span className="badge">{t('network.mined')}</span>}
+                    <b>{c.tag}</b> {mined.has(c.tag) && <span className="badge">{t('network.mined')}</span>}{' '}
+                    {eff(c) < 1 && (
+                      <span className="badge warn" title={t('network.rttHint', { pct: Math.round(eff(c) * 100) })}>
+                        RTT
+                      </span>
+                    )}
                   </td>
                   <td data-label={t('network.difficulty')} className="num">
                     {formatDifficulty(c.difficulty_now)}
+                    {eff(c) < 1 && rtt && <RealTime rtt={rtt} difficulty={rtt.difficulty || c.difficulty_now} />}
                   </td>
                   <td data-label={t('network.vs24')} className={`num ${d <= -1 ? 'lvl-ok' : d >= 1 ? 'lvl-warn' : ''}`}>
                     {`${d > 0 ? '+' : d < 0 ? '−' : ''}${Math.abs(d).toLocaleString(loc, { maximumFractionDigits: 1 })}%`}
@@ -105,7 +117,37 @@ export function SoloOdds({ network, hashrateTHs, pools, timed }: SoloOddsProps) 
           })}
         </p>
       )}
+      {withRTT.length > 0 && (
+        <p className="small muted">
+          {t('network.rttNote', { coins: withRTT.map((c) => c.tag).join(', '), pct: Math.round(eff(withRTT[0]!) * 100) })}
+        </p>
+      )}
       <p className="small muted">{t('network.note')}</p>
+    </div>
+  )
+}
+
+/** The real-time difficulty of eCash now, as the watched pool sees it; difficulty is the header one. */
+function RealTime({ rtt, difficulty }: { rtt: RttStatus; difficulty: number }) {
+  const { t } = useTranslation()
+  const loc = locale()
+  if (!rtt.connected) {
+    return (
+      <div className="small muted" title={rtt.error}>
+        {t('network.rttOffline')}
+      </div>
+    )
+  }
+  const hard = rtt.factor > 1.01
+  return (
+    <div className={hard ? 'small lvl-warn' : 'small muted'}>
+      {hard
+        ? t('network.rttNow', {
+            difficulty: formatDifficulty(difficulty * rtt.factor),
+            factor: rtt.factor.toLocaleString(loc, { maximumFractionDigits: rtt.factor < 10 ? 1 : 0 }),
+          })
+        : t('network.rttEasy')}
+      {rtt.last_block && ` · ${t('network.lastBlock', { ago: formatAgo(rtt.last_block, t) })}`}
     </div>
   )
 }

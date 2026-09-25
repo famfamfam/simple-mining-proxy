@@ -24,6 +24,7 @@ import (
 	"github.com/famfamfam/simple-mining-proxy/internal/listener"
 	"github.com/famfamfam/simple-mining-proxy/internal/pool"
 	"github.com/famfamfam/simple-mining-proxy/internal/profit"
+	"github.com/famfamfam/simple-mining-proxy/internal/rtt"
 	"github.com/famfamfam/simple-mining-proxy/internal/session"
 	"github.com/famfamfam/simple-mining-proxy/internal/settings"
 	"github.com/famfamfam/simple-mining-proxy/internal/state"
@@ -119,10 +120,23 @@ func run() error {
 	}
 	set.OnChange(func(*settings.Values) { go hist.Prune() })
 
-	timedSw := timed.New(timed.Deps{Settings: set, Pools: mgr, Events: ev, Path: filepath.Join(cfg.DataDir, "timed.json")})
+	// Market data requests are bounded by the callers' contexts.
+	httpClient := &http.Client{}
+	// eCash blocks right after a block must meet a harder real-time target:
+	// a quiet connection to an eCash pool shows when blocks arrive.
+	watcher := rtt.NewWatcher(rtt.WatchDeps{Settings: set, Pools: mgr, Seed: rtt.Blockchair(httpClient, rtt.BlockchairURL)})
+	timedSw := timed.New(timed.Deps{
+		Settings: set, Pools: mgr, Events: ev, Path: filepath.Join(cfg.DataDir, "timed.json"),
+		Hardness: func(p state.Pool) float64 {
+			if p.Coin == rtt.Coin {
+				return watcher.Hardness()
+			}
+			return 1
+		},
+	})
 	profitSw := profit.New(profit.Deps{
 		Settings: set, Pools: mgr, Events: ev, Path: filepath.Join(cfg.DataDir, "profit.json"),
-		Fetch: profit.WhatToMine(&http.Client{}, profit.WhatToMineURL),
+		Fetch: profit.WithBSV(httpClient, profit.WhatsOnChainURL, profit.WhatToMine(httpClient, profit.WhatToMineURL)),
 		Home:  timedSw.Home,
 	})
 
@@ -170,7 +184,7 @@ func run() error {
 	httpSrv := &http.Server{
 		Handler: admin.New(admin.Deps{
 			Config: cfg, State: st, Settings: set, Pools: mgr, Registry: reg,
-			Stats: collector, History: hist, Profit: profitSw, Timed: timedSw, Events: ev, Certs: certs, Started: started,
+			Stats: collector, History: hist, Profit: profitSw, Timed: timedSw, RTT: watcher, Events: ev, Certs: certs, Started: started,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
@@ -200,6 +214,7 @@ func run() error {
 	go func() { hist.Run(ctx); close(histDone) }()
 	go profitSw.Run(ctx)
 	go timedSw.Run(ctx)
+	go watcher.Run(ctx)
 	httpErr := make(chan error, 1)
 	go func() {
 		slog.Info("admin UI listening", "addr", adminLn.Addr().String())

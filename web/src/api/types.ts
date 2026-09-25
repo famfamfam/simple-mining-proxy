@@ -270,6 +270,8 @@ export interface CoinView {
   revenue_btc: number
   revenue_usd: number
   stale: boolean
+  /** Share of the block rate the difficulty suggests that miners really get: below 1 on eCash (Real Time Targeting). */
+  efficiency: number
   pools: string[]
 }
 
@@ -304,6 +306,19 @@ export interface NetworkStatus {
   btc_usd: number
   coins: CoinView[]
   error?: string
+  /** eCash seen live through an eCash pool; null without one. */
+  rtt: RttStatus | null
+}
+
+export interface RttStatus {
+  pool: string
+  connected: boolean
+  /** Difficulty of the block being mined, from its header target. */
+  difficulty: number
+  /** How many times harder the real-time target is now; 1 when not known. */
+  factor: number
+  last_block: string | null
+  error?: string
 }
 
 export interface TimedStatus {
@@ -316,8 +331,14 @@ export interface TimedStatus {
   /** While the farm is on the target: the pool it returns to and when. */
   home?: string
   until?: string
-  /** Start of the next window. */
+  /** Start of the next period. */
   next?: string
+  /** Seconds on the target still due in this period. */
+  left: number
+  /** Held off: a block just arrived on the target's chain (eCash). */
+  waiting: boolean
+  /** How many times harder a block on the target is now. */
+  hardness: number
   /** Why the last switch to the target failed. */
   error?: string
 }

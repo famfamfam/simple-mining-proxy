@@ -52,7 +52,8 @@ type CoinView struct {
 	RevenueBTC    float64  `json:"revenue_btc"`
 	RevenueUSD    float64  `json:"revenue_usd"`
 	Stale         bool     `json:"stale"`
-	Pools         []string `json:"pools"` // pool ids with this coin that take part
+	Efficiency    float64  `json:"efficiency"` // see Coin.Efficiency; revenue includes it
+	Pools         []string `json:"pools"`      // pool ids with this coin that take part
 }
 
 // Report is the result of one check.
@@ -263,7 +264,7 @@ func (s *Switcher) marketData(ctx context.Context) (*Market, error) {
 // compared are the coins a report always lists. The market has more SHA-256
 // coins, some with a share difficulty that does not compare (QUAI); those
 // are listed only when a pool mines them.
-var compared = map[string]bool{"BTC": true, "BCH": true, "XEC": true, "DGB": true, "FB": true}
+var compared = map[string]bool{"BTC": true, "BCH": true, "BSV": true, "XEC": true, "DGB": true, "FB": true}
 
 // coinViews lists the compared coins and those mined by a pool, the most
 // profitable first. Pools of a coin view are the ones in byCoin.
@@ -275,7 +276,7 @@ func coinViews(m *Market, mined map[string]bool, byCoin map[string][]state.Pool)
 		}
 		cv := CoinView{
 			Tag: c.Tag, Name: c.Name, PriceBTC: c.PriceBTC, Difficulty: c.Difficulty, DifficultyNow: c.DifficultyNow,
-			BlockReward: c.BlockReward, RevenueBTC: c.RevenueBTC(), Stale: c.Stale, Pools: []string{},
+			BlockReward: c.BlockReward, RevenueBTC: c.RevenueBTC(), Stale: c.Stale, Efficiency: c.Efficiency, Pools: []string{},
 		}
 		if m.BTCUSD > 0 {
 			cv.PriceUSD = c.PriceBTC * m.BTCUSD
