@@ -75,11 +75,12 @@ function StatusCards({ status, pools }: { status: Status; pools: Pool[] }) {
 function ProfitSection(props: { pools: Pool[]; hashrateTHs: number; onSwitch: (p: Pool) => void }) {
   const { t } = useTranslation()
   const profit = useProfit()
+  const timed = useTimed()
   if (!profit.data || profit.data.mode === 'off') return null
   return (
     <>
       <h2>{t('profit.title')}</h2>
-      <ProfitPanel status={profit.data} {...props} />
+      <ProfitPanel status={profit.data} timed={timed.data} {...props} />
     </>
   )
 }

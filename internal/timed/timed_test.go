@@ -337,6 +337,9 @@ func TestCarriesOverIntoTheNextPeriod(t *testing.T) {
 	e.hard = 1
 	e.at(25 * time.Minute) // 9 minutes still due, 5 left in the period
 	e.want("solo", "main", "backup")
+	if u := e.sw.Status().Until; u == nil || !u.Equal(t0.Add(40*time.Minute)) {
+		t.Fatalf("until %v, want the end of the next period's time", u)
+	}
 	switched := e.mgr.LastSwitch().At
 	e.at(30 * time.Minute) // the next period starts on the target
 	e.want("solo", "main", "backup")

@@ -2,11 +2,11 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../../api/client'
-import type { CoinView, Pool, ProfitReport, ProfitStatus } from '../../api/types'
+import type { CoinView, Pool, ProfitReport, ProfitStatus, TimedStatus } from '../../api/types'
 import { useToast } from '../../context/feedback'
 import { locale } from '../../i18n'
 import { errorText } from '../../i18n/messages'
-import { formatAgo, formatDateTime, formatDifficulty } from '../../lib/format'
+import { formatAgo, formatDateTime, formatDifficulty, formatTime } from '../../lib/format'
 
 function usd(v: number, loc: string, digits = 4) {
   return v.toLocaleString(loc, {
@@ -43,10 +43,12 @@ interface ProfitPanelProps {
   pools: Pool[]
   hashrateTHs: number
   onSwitch: (p: Pool) => void
+  /** Timed switching: while it holds the farm on its pool, coins are compared for the pool the farm returns to. */
+  timed?: TimedStatus
 }
 
 /** Profit switching: the coins compared, the decision and the schedule. */
-export function ProfitPanel({ status: st, pools, hashrateTHs, onSwitch }: ProfitPanelProps) {
+export function ProfitPanel({ status: st, pools, hashrateTHs, onSwitch, timed }: ProfitPanelProps) {
   const { t, i18n } = useTranslation()
   const loc = locale()
   const qc = useQueryClient()
@@ -57,6 +59,8 @@ export function ProfitPanel({ status: st, pools, hashrateTHs, onSwitch }: Profit
   const poolName = (id: string) => pools.find((p) => p.id === id)?.name ?? id
   const target = rep?.decision === 'recommend' && rep.target ? pools.find((p) => p.id === rep.target) : undefined
   const current = reported.find((c) => c.tag === rep?.active_coin)
+  // The farm is on the timer pool now; the report's coin is the one it returns to.
+  const timerPool = timed?.home ? pools.find((p) => p.id === timed.target) : undefined
 
   const check = async () => {
     setChecking(true)
@@ -90,6 +94,11 @@ export function ProfitPanel({ status: st, pools, hashrateTHs, onSwitch }: Profit
           {t('profit.checkNow')}
         </button>
       </div>
+      {timerPool && timed?.home && (
+        <p className="small">
+          {t('profit.onTimer', { pool: timerPool.name, until: formatTime(timed.until, loc), home: poolName(timed.home) })}
+        </p>
+      )}
       {rep && <Decision report={rep} poolName={poolName} />}
       {target && (
         <button type="button" className="primary small" onClick={() => onSwitch(target)}>
@@ -115,7 +124,10 @@ export function ProfitPanel({ status: st, pools, hashrateTHs, onSwitch }: Profit
                 <tr key={c.tag} className={c.pools.length || c.tag === rep?.active_coin ? undefined : 'muted'}>
                   <td className="primary">
                     <b>{c.tag}</b>{' '}
-                    {c.tag === rep?.active_coin && <span className="badge accent">{t('profit.current')}</span>}{' '}
+                    {c.tag === rep?.active_coin && (
+                      <span className="badge accent">{timerPool ? t('profit.homeCoin') : t('profit.current')}</span>
+                    )}{' '}
+                    {timerPool && c.tag === timerPool.coin && <span className="badge warn">{t('profit.timerNow')}</span>}{' '}
                     {c.tag === rep?.best && c.tag !== rep?.active_coin && <span className="badge ok">{t('profit.best')}</span>}
                     {c.stale && <span className="badge warn">{t('profit.stale')}</span>}
                   </td>

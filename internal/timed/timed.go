@@ -358,6 +358,10 @@ func (s *Switcher) Status() Status {
 			left -= now.Sub(s.cur.since())
 		}
 		until := now.Add(max(left, 0))
+		if end := period.Add(v.TimedPeriod); until.After(end) {
+			// At the boundary the farm stays for the next period's time.
+			until = end.Add(v.TimedDuration)
+		}
 		st.Home, st.Until = s.cur.Home, &until
 	}
 	st.Left = max(left, 0).Seconds()

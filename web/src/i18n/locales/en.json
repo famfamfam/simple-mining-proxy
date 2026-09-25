@@ -518,7 +518,10 @@
       "recommend": "{{best}} earns {{adv}} more than {{coin}}: switching to {{pool}} is worth it.",
       "switched": "Switched to {{pool}}: {{best}} earns {{adv}} more than {{coin}}.",
       "switch_failed": "Switching to {{pool}} failed: {{error}}"
-    }
+    },
+    "onTimer": "The farm is on the timer pool {{pool}} until {{until}}. Coins are compared for {{home}}, where it returns; the timer does not change the choice of the main pool.",
+    "homeCoin": "main",
+    "timerNow": "on the timer now"
   },
   "timed": {
     "badge": "Timer",
