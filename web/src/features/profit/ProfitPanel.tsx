@@ -27,15 +27,24 @@ function pct(v: number, loc: string) {
 function Decision({ report, poolName }: { report: ProfitReport; poolName: (id: string) => string }) {
   const { t } = useTranslation()
   const loc = locale()
-  const text = t(`profit.decision.${report.decision}`, {
+  // Away and due back, but the main pool is down: the farm stays for that reason.
+  const key = report.decision === 'away_stay' && report.error ? 'away_down' : report.decision
+  const text = t(`profit.decision.${key}`, {
     coin: report.active_coin,
     best: report.best,
     adv: pct(report.advantage, loc).replace('+', ''),
     margin: report.margin,
     pool: poolName(report.target || report.active),
     error: report.error ?? '',
+    home: report.home ? poolName(report.home) : '',
+    homeCoin: report.home_coin ?? '',
+    over: pct(report.over_home, loc),
+    back: report.return_margin,
   })
-  const tone = { switched: 'ok', recommend: 'warn', switch_failed: 'bad', no_data: 'bad' }[report.decision as string] ?? ''
+  const tone =
+    { switched: 'ok', returned: 'ok', recommend: 'warn', return_home: 'warn', switch_failed: 'bad', no_data: 'bad' }[
+      report.decision as string
+    ] ?? ''
   return <p className={`profit-decision ${tone}`}>{text}</p>
 }
 
@@ -58,7 +67,8 @@ export function ProfitPanel({ status: st, pools, hashrateTHs, onSwitch, timed }:
   const rep = st.report
   const reported = rep?.coins ?? [] // empty when there was no market data
   const poolName = (id: string) => poolNameIn(pools, id)
-  const target = rep?.decision === 'recommend' && rep.target ? pools.find((p) => p.id === rep.target) : undefined
+  const move = rep?.decision === 'recommend' || rep?.decision === 'return_home'
+  const target = move && rep.target ? pools.find((p) => p.id === rep.target) : undefined
   const current = reported.find((c) => c.tag === rep?.active_coin)
   // The farm is on the timer pool or on a block hunt now; the report's coin
   // is the one it returns to.

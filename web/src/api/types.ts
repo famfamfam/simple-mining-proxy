@@ -73,6 +73,8 @@ export interface Pool {
   timed_target: boolean
   /** A solo pool: pays only for blocks the farm finds. Any role, but never profit switching. */
   solo: boolean
+  /** The main pool profit switching returns to; one pool at most. */
+  profit_home: boolean
   role: Role
   fallback_position?: number
   health: Health
@@ -270,6 +272,9 @@ export type ProfitDecision =
   | 'recommend'
   | 'switched'
   | 'switch_failed'
+  | 'away_stay'
+  | 'return_home'
+  | 'returned'
 
 /** One coin; revenue is for 1 TH/s over a day. */
 export interface CoinView {
@@ -303,6 +308,12 @@ export interface ProfitReport {
   decision: ProfitDecision
   target?: string
   error?: string
+  /** The main pool the farm returns to, and its coin; absent without one. */
+  home?: string
+  home_coin?: string
+  return_margin: number
+  /** Away from the main pool: percent the active coin earns over the main pool's. */
+  over_home: number
 }
 
 export interface ProfitStatus {

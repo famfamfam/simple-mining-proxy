@@ -55,6 +55,7 @@ type Values struct {
 	ProfitSwitch          string
 	ProfitInterval        time.Duration
 	ProfitMargin          int
+	ProfitReturnMargin    int
 	TimedSwitch           string
 	TimedPeriod           time.Duration
 	TimedDuration         time.Duration
@@ -199,6 +200,15 @@ var Defs = []Def{
 		Default: 5, Min: 0, Max: 50,
 		Applies: AppliesImmediately,
 	}, num(func(v *Values) *int { return &v.ProfitMargin })),
+
+	// With a main pool marked, the farm returns to it once the coin it moved
+	// to earns less than this much more than the main pool's coin. Lower
+	// than profit_margin, so the farm does not bounce around the margin.
+	def(Def{
+		Key: "profit_return_margin", Group: "profit", Type: TypeInt, Unit: "%",
+		Default: 1, Min: 0, Max: 50,
+		Applies: AppliesImmediately,
+	}, num(func(v *Values) *int { return &v.ProfitReturnMargin })),
 
 	// Timed switching: for timed_duration at the start of every timed_period
 	// the farm mines on the pool marked in the pool editor (e.g. a solo
@@ -383,6 +393,10 @@ func crossCheck(v *Values) map[string]apierr.Msg {
 	if v.MaxPendingConnections > v.MaxConnections {
 		errs["max_pending_connections"] = apierr.M("setting_pending_above_total",
 			"must not be more than max_connections")
+	}
+	if v.ProfitReturnMargin > v.ProfitMargin {
+		errs["profit_return_margin"] = apierr.M("setting_return_above_margin",
+			"must not be more than profit_margin ({margin}%)", "margin", v.ProfitMargin)
 	}
 	if v.TimedDuration >= v.TimedPeriod {
 		errs["timed_duration"] = apierr.M("setting_timed_duration",

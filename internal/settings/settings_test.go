@@ -120,3 +120,18 @@ func TestNewStoreRejectsInvalidSaved(t *testing.T) {
 		t.Fatalf("unknown keys must be ignored with a warning: %v %v", unknown, err)
 	}
 }
+
+func TestReturnMarginNotAboveMargin(t *testing.T) {
+	s, _, err := NewStore(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.Prepare(map[string]json.RawMessage{"profit_margin": raw(`3`), "profit_return_margin": raw(`4`)})
+	var e *apierr.Error
+	if !errors.As(err, &e) || e.Fields["profit_return_margin"].IsZero() {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := s.Prepare(map[string]json.RawMessage{"profit_margin": raw(`3`), "profit_return_margin": raw(`3`)}); err != nil {
+		t.Fatalf("equal margins: %v", err)
+	}
+}

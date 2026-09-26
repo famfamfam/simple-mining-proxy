@@ -81,6 +81,7 @@ func New(d Deps) http.Handler {
 	api("GET /api/history/workers", s.historyWorkers)
 	api("GET /api/profit", s.profitStatus)
 	api("POST /api/profit/check", s.profitCheck)
+	api("PUT /api/profit/home", s.profitHome)
 	api("GET /api/timed", s.timedStatus)
 	api("POST /api/timed/start", s.timedStart)
 	api("GET /api/network", s.network)
@@ -440,6 +441,25 @@ func (s *Server) profitCheck(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
+// profitHome sets the main pool profit switching returns to; "" clears it.
+func (s *Server) profitHome(w http.ResponseWriter, r *http.Request) error {
+	var body struct {
+		Pool *string `json:"pool"`
+	}
+	if err := decode(r, &body); err != nil {
+		return err
+	}
+	if body.Pool == nil {
+		return apierr.Validation(apierr.M("profit_home_required", `"pool" is required; send "" for no main pool`),
+			map[string]apierr.Msg{"pool": apierr.M("required", "required")})
+	}
+	if err := s.d.Pools.SetProfitHome(*body.Pool); err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, s.d.Profit.Status())
+	return nil
+}
+
 // network is the difficulty, reward and price of the coins, for the solo
 // odds on the Dashboard. Market data is cached, so polling it is cheap.
 func (s *Server) network(w http.ResponseWriter, r *http.Request) error {
@@ -492,6 +512,7 @@ type poolView struct {
 	ProfitSwitch     bool       `json:"profit_switch"`
 	TimedTarget      bool       `json:"timed_target"`
 	Solo             bool       `json:"solo"`
+	ProfitHome       bool       `json:"profit_home"`
 	Role             string     `json:"role"`
 	FallbackPosition int        `json:"fallback_position,omitempty"`
 	Health           string     `json:"health"`
@@ -531,7 +552,7 @@ func (s *Server) poolView(p state.Pool, snap *pool.Snapshot, counts session.Coun
 	h := s.d.Pools.Health(p.ID)
 	v := poolView{
 		ID: p.ID, Name: p.Name, Coin: p.Coin, TLS: p.TLS,
-		TLSSkipVerify: p.TLSSkipVerify, Username: p.Username, PasswordSet: p.Password != "", ProfitSwitch: p.ProfitSwitch, TimedTarget: p.TimedTarget, Solo: p.Solo,
+		TLSSkipVerify: p.TLSSkipVerify, Username: p.Username, PasswordSet: p.Password != "", ProfitSwitch: p.ProfitSwitch, TimedTarget: p.TimedTarget, Solo: p.Solo, ProfitHome: p.ProfitHome,
 		Health: string(h.Status), Sessions: counts.ByPool[p.ID],
 		Accepted: st.ByPool[p.ID].Accepted, Rejected: st.ByPool[p.ID].Rejected,
 		HashrateTHs: st.PoolHashrateHs[p.ID] / 1e12,

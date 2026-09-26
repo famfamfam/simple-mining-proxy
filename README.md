@@ -172,6 +172,7 @@ The screen shows the everyday groups open and the technical ones (timeouts, limi
 | `profit_switch` | off | off, advise, auto | Profit switching mode. |
 | `profit_interval` | 24 h | 1 h – 7 days | How often the coins are compared. |
 | `profit_margin` | 5 % | 0–50 % | How much more another coin must earn before switching to it. |
+| `profit_return_margin` | 1 % | 0–50 % | With a main pool: below this advantage the farm returns to it; at most `profit_margin`. |
 | `timed_switch` | off | off, on | Timed switching. |
 | `timed_period` | 30 min | 10 min – 24 h | How often the farm moves to the timer pool. |
 | `timed_duration` | 10 min | 1 min – 12 h | How long it stays there in every period; shorter than `timed_period`. |
@@ -227,6 +228,15 @@ eCash (XEC) needs a correction. Its nodes enforce Real Time Targeting: besides t
 A profit switch works like a manual one: the target pool is checked, the change is saved and miners reconnect gradually. Its reason, `profit`, shows in the events and in the last switch on the Dashboard. If the active pool does not take part, it is left alone. Solo pools never take part. "Check now" only shows the decision and never switches. The time of the last scheduled check is stored in `/data/profit.json`, so a restart does not move the schedule.
 
 On PPLNS pools frequent switching loses earnings. Use FPPS or PPS+ pools and an interval of a day or more, and start with Advise.
+
+### Main pool
+
+Without a main pool the farm stays on whichever coin it switched to until another one is the margin ahead. With one, chosen under Settings → Profit switching (any pool that takes part, for example BTC), the farm comes back to it:
+
+- On the main pool: the farm leaves for a coin that earns at least `profit_margin` more (5 % by default).
+- Away from it: once the current coin earns less than `profit_return_margin` more than the main pool's coin (1 % by default), the farm returns to the main pool and stays there until a coin is `profit_margin` ahead again. A coin that beats the current one by `profit_margin` still wins.
+
+For example: BTC is the main pool, BSV gets 6 % ahead and the farm moves to it; when BSV's lead falls to 0.8 %, the next check brings the farm back to BTC. The gap between the two margins keeps it from bouncing on small changes. If the main pool is down at that moment, the farm stays where it is and the report says why. The returns show in the events as `profit_returned`.
 
 ## Timed switching
 
@@ -321,6 +331,7 @@ The admin UI uses a JSON API under `/api/`. Scripts authenticate with `Authoriza
 | GET | `/api/history/workers?from=&to=` | Every miner seen in the range |
 | GET | `/api/profit` | Profit switching status and the last report |
 | POST | `/api/profit/check` | Compare the coins now; never switches |
+| PUT | `/api/profit/home` | The main pool of profit switching: `{"pool": "btc"}`; `""` for none |
 | GET | `/api/timed` | Timed switching: target pool, time still due, next period, eCash wait; block hunting in `hunt` |
 | POST | `/api/timed/start` | Go to the timer pool now and restart the schedule from this moment |
 | GET | `/api/network` | Difficulty, block reward, price and efficiency of the coins; eCash real-time target |

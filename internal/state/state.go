@@ -57,6 +57,10 @@ type Pool struct {
 	// It can be active, a fallback or the timed target, but profit switching
 	// never picks it: comparing coins would move the whole farm to a lottery.
 	Solo bool `json:"solo,omitempty"`
+	// ProfitHome is the pool profit switching returns to once the coin it
+	// moved to earns less than profit_return_margin more. At most one pool
+	// has it, and only one that takes part in profit switching.
+	ProfitHome bool `json:"profit_home,omitempty"`
 }
 
 // UnmarshalJSON also reads the version-1 form with a single host and port.

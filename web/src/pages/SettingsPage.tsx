@@ -8,6 +8,7 @@ import { QueryState } from '../components/Panel'
 import { useConfirm, useToast } from '../context/feedback'
 import { humanValue, rangeErrors, rangeText } from '../features/settings/describe'
 import { advancedGroups, groupSummary, matches, serverGroup } from '../features/settings/groups'
+import { ProfitHomePanel } from '../features/settings/ProfitHomePanel'
 import { ServerPanel } from '../features/settings/ServerPanel'
 import { SettingControl } from '../features/settings/SettingControl'
 import { TelegramPanel } from '../features/settings/TelegramPanel'
@@ -290,6 +291,7 @@ function SettingsForm({ data }: { data: SettingsPayload }) {
             <SettingRow key={m.key} meta={m} value={current(m)} error={errorFor(m)} onChange={(v) => change(m, v)} />
           ))}
         </div>
+        {!q && g === 'profit' && <ProfitHomePanel pools={pools.data ?? []} />}
         {!q && g === 'timed' && <TimedPanel pools={pools.data ?? []} />}
         {!q && g === 'hunt' && <HuntPanel pools={pools.data ?? []} />}
         {!q && g === 'alerts' && <TelegramPanel status={data.server.telegram} />}

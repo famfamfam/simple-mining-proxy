@@ -116,6 +116,8 @@ export const api = {
   /** null resets a setting to its default. */
   saveSettings: (changes: Record<string, SettingValue | null>) =>
     request<SettingsSaved>('PUT', 'api/settings', changes),
+  /** The main pool profit switching returns to; "" for none. */
+  setProfitHome: (pool: string) => request<ProfitStatus>('PUT', 'api/profit/home', { pool }),
   /** Restarts the timer schedule now: the farm goes to the timer pool at once. */
   timedStart: () => request<TimedStatus>('POST', 'api/timed/start'),
   /** Sets the bot token after Telegram confirms it; "" removes it. */

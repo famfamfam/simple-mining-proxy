@@ -456,7 +456,43 @@ func apply(p *state.Pool, in Input) {
 	if in.Solo != nil {
 		p.Solo = *in.Solo
 	}
+	if !p.ProfitSwitch || p.Solo {
+		p.ProfitHome = false // the home of profit switching takes part in it
+	}
 	p.Coin = strings.ToUpper(p.Coin)
+}
+
+// SetProfitHome marks the pool profit switching returns to; "" clears it.
+func (m *Manager) SetProfitHome(id string) error {
+	m.opMu.Lock()
+	defer m.opMu.Unlock()
+	var name string
+	err := m.st.Mutate(func(f *state.File) error {
+		if id != "" {
+			p, ok := f.Pool(id)
+			if !ok {
+				return apierr.PoolNotFound(id)
+			}
+			if !p.ProfitSwitch || p.Solo {
+				return apierr.Conflict(apierr.M("profit_home_not_taking_part",
+					"pool {pool} does not take part in profit switching: tick it in the pool editor first", "pool", p.Name))
+			}
+			name = p.Name
+		}
+		for i := range f.Pools {
+			f.Pools[i].ProfitHome = f.Pools[i].ID == id
+		}
+		return nil
+	}, m.setSnapshot)
+	if err != nil {
+		return persistErr(err)
+	}
+	if id == "" {
+		m.ev.Info("profit_home", "profit switching: no main pool")
+	} else {
+		m.ev.Info("profit_home", "profit switching: main pool is %s", name)
+	}
+	return nil
 }
 
 // onlyTimedTarget clears the timed target mark on every pool but p, which

@@ -65,6 +65,11 @@ export function PoolsTable({ pools, onSwitch, onTest, onEdit, onDelete }: PoolsT
                     {t('pools.profitSwitch')}
                   </span>
                 )}{' '}
+                {p.profit_home && (
+                  <span className="badge ok" title={t('pools.profitHomeHint')}>
+                    {t('pools.profitHome')}
+                  </span>
+                )}{' '}
                 {p.timed_target && (
                   <span className="badge" title={t('pools.timedTargetHint')}>
                     {t('pools.timedTarget')}

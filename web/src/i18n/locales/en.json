@@ -124,7 +124,9 @@
     "profitSwitch": "profit",
     "profitSwitchHint": "Profit switching may choose this pool",
     "timedTarget": "timer",
-    "timedTargetHint": "Timed switching moves the farm to this pool for part of every period"
+    "timedTargetHint": "Timed switching moves the farm to this pool for part of every period",
+    "profitHome": "main",
+    "profitHomeHint": "The main pool: profit switching returns here when no coin is clearly better"
   },
   "test": {
     "title": "Check: {{pool}}",
@@ -392,6 +394,11 @@
           "off": "Off",
           "on": "On"
         }
+      },
+      "profit_return_margin": {
+        "title": "Return margin",
+        "desc": "With a main pool chosen below: once the coin the farm moved to earns less than this much more than the main pool's coin, the farm goes back to the main pool and stays there until another coin is ahead by the switching margin again. The gap between the two margins keeps the farm from bouncing between coins on small changes.",
+        "note": "not more than “Switching margin”"
       }
     },
     "server": {
@@ -453,6 +460,14 @@
       "alerts": "no shares for {{after}} · {{bot}}",
       "noBot": "no Telegram bot",
       "history": "per minute {{detail}}, hourly {{total}}"
+    },
+    "profitHome": {
+      "title": "Main pool",
+      "none": "none: stay on the best coin",
+      "help": "The pool profit switching returns to, for example BTC. The farm leaves it for a coin that earns at least the switching margin more, and comes back once that coin is less than the return margin ahead. Saved at once.",
+      "noCandidates": "No pool takes part in profit switching yet: tick it in the pool editor.",
+      "saved": "Main pool: {{pool}}",
+      "cleared": "No main pool"
     }
   },
   "errors": {
@@ -525,7 +540,10 @@
     "pool_solo_profit": "a solo pool cannot take part in profit switching",
     "timed_off": "Timed switching is off: turn it on in the settings",
     "timed_no_target": "No pool is marked for timed switching",
-    "events_level": "The level must be info, warn or error"
+    "events_level": "The level must be info, warn or error",
+    "profit_home_not_taking_part": "Pool {{pool}} does not take part in profit switching: tick it in the pool editor first",
+    "profit_home_required": "Choose a pool, or none",
+    "setting_return_above_margin": "must not be more than the switching margin ({{margin}}%)"
   },
   "stats": {
     "title": "Charts",
@@ -602,7 +620,11 @@
       "below_margin": "{{best}} earns {{adv}} more than {{coin}}, below the {{margin}}% margin: staying.",
       "recommend": "{{best}} earns {{adv}} more than {{coin}}: switching to {{pool}} is worth it.",
       "switched": "Switched to {{pool}}: {{best}} earns {{adv}} more than {{coin}}.",
-      "switch_failed": "Switching to {{pool}} failed: {{error}}"
+      "switch_failed": "Switching to {{pool}} failed: {{error}}",
+      "away_stay": "{{coin}} earns {{over}} over {{homeCoin}} on the main pool {{home}}, not below the {{back}}% return margin: staying.",
+      "return_home": "{{coin}} earns only {{over}} over {{homeCoin}}, below the {{back}}% return margin: go back to the main pool {{pool}}.",
+      "returned": "Back on the main pool {{pool}}: {{coin}} earned only {{over}} over {{homeCoin}}.",
+      "away_down": "{{coin}} earns only {{over}} over {{homeCoin}}, below the {{back}}% return margin, but the main pool {{home}} is down: staying."
     },
     "onTimer": "The farm is on the timer pool {{pool}} until {{until}}. Coins are compared for {{home}}, where it returns; the timer does not change the choice of the main pool.",
     "homeCoin": "main",

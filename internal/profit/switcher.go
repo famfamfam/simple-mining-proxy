@@ -37,6 +37,10 @@ const (
 	Recommend    = "recommend"     // should switch (advise mode or a manual check)
 	Switched     = "switched"      // switched (auto mode)
 	SwitchFailed = "switch_failed" // the switch was refused, e.g. the pool check failed
+	// With a main pool: the farm is away from it.
+	AwayStay   = "away_stay"   // the coin still earns at least the return margin more than the main pool's: stay
+	ReturnHome = "return_home" // the advantage is below the return margin: should go back (advise mode or a manual check)
+	Returned   = "returned"    // went back to the main pool (auto mode)
 )
 
 // CoinView is one coin of a report. Revenue is for 1 TH/s over a day.
@@ -70,6 +74,11 @@ type Report struct {
 	Decision   string     `json:"decision"`
 	Target     string     `json:"target,omitempty"` // pool id to switch to
 	Error      string     `json:"error,omitempty"`
+	// Main pool: the pool the farm returns to, "" without one.
+	Home         string  `json:"home,omitempty"`
+	HomeCoin     string  `json:"home_coin,omitempty"`
+	ReturnMargin int     `json:"return_margin"` // percent
+	OverHome     float64 `json:"over_home"`     // away from the main pool: percent the active coin earns over its coin
 }
 
 type Deps struct {
@@ -210,16 +219,19 @@ func (s *Switcher) Check(ctx context.Context, scheduled bool) *Report {
 	s.checkMu.Lock()
 	defer s.checkMu.Unlock()
 	v := s.d.Settings.Get()
-	rep := &Report{At: s.now().UTC(), Scheduled: scheduled, Mode: v.ProfitSwitch, Margin: v.ProfitMargin, Coins: []CoinView{}}
+	rep := &Report{At: s.now().UTC(), Scheduled: scheduled, Mode: v.ProfitSwitch, Margin: v.ProfitMargin,
+		ReturnMargin: v.ProfitReturnMargin, Coins: []CoinView{}}
 
 	market, err := s.marketData(ctx)
 	if err != nil {
 		rep.Decision, rep.Error = NoData, err.Error()
 	} else {
 		s.decide(rep, market)
-		if scheduled && rep.Decision == Recommend && v.ProfitSwitch == settings.ProfitAuto {
+		if move := rep.Decision == Recommend || rep.Decision == ReturnHome; scheduled && move && v.ProfitSwitch == settings.ProfitAuto {
 			if _, err := s.d.Pools.ActivateFor(ctx, rep.Target, "profit"); err != nil {
 				rep.Decision, rep.Error = SwitchFailed, err.Error()
+			} else if rep.Decision == ReturnHome {
+				rep.Decision = Returned
 			} else {
 				rep.Decision = Switched
 			}
@@ -355,14 +367,51 @@ func (s *Switcher) decide(rep *Report, m *Market) {
 	}
 	rep.Best = best.Tag
 	rep.Advantage = (best.RevenueBTC()/cur.RevenueBTC() - 1) * 100
-	switch {
-	case best.Tag == cur.Tag:
-		rep.Decision = Best
-	case rep.Advantage < float64(rep.Margin):
-		rep.Decision = BelowMargin
-	default:
-		rep.Decision, rep.Target = Recommend, pickPool(s.d.Pools, byCoin[best.Tag])
+
+	// Away from the main pool, the farm stays only while its coin earns at
+	// least the return margin more than the main pool's; a coin that beats
+	// the current one by the margin still wins.
+	home, homeCoin, away := s.homePool(snap, m, active)
+	if home.ID != "" {
+		rep.Home, rep.HomeCoin = home.ID, home.Coin
 	}
+	switch {
+	case best.Tag == cur.Tag && !away:
+		rep.Decision = Best
+	case best.Tag != cur.Tag && rep.Advantage >= float64(rep.Margin) && !(away && best.Tag == homeCoin.Tag):
+		rep.Decision, rep.Target = Recommend, pickPool(s.d.Pools, byCoin[best.Tag])
+	case away:
+		rep.OverHome = (cur.RevenueBTC()/homeCoin.RevenueBTC() - 1) * 100
+		switch {
+		case rep.OverHome >= float64(rep.ReturnMargin):
+			rep.Decision = AwayStay
+		case s.d.Pools.Health(home.ID).Status == pool.StatusDown:
+			rep.Decision, rep.Error = AwayStay, "main pool "+home.Name+" is down"
+		default:
+			rep.Decision, rep.Target = ReturnHome, home.ID
+		}
+	default:
+		rep.Decision = BelowMargin
+	}
+}
+
+// homePool is the main pool of profit switching and its coin's market data;
+// away is set when the farm compares for another pool. A main pool whose
+// coin has no usable data counts as none.
+func (s *Switcher) homePool(snap *pool.Snapshot, m *Market, active state.Pool) (home state.Pool, coin Coin, away bool) {
+	for _, p := range snap.Pools {
+		if p.ProfitHome && p.ProfitSwitch {
+			home = p
+		}
+	}
+	if home.ID == "" {
+		return state.Pool{}, Coin{}, false
+	}
+	coin, ok := m.Coins[home.Coin]
+	if !ok || coin.Stale || coin.RevenueBTC() <= 0 {
+		return home, Coin{}, false
+	}
+	return home, coin, active.ID != home.ID
 }
 
 // pickPool prefers a pool known to be UP; otherwise the first in the list.
@@ -382,6 +431,19 @@ func (s *Switcher) event(rep *Report) {
 		ev.Info("profit_switched", "profit switching: %s earns %.1f%% more than %s, switched to pool %s", rep.Best, rep.Advantage, rep.ActiveCoin, rep.Target)
 	case Recommend:
 		ev.Info("profit_recommend", "profit switching: %s earns %.1f%% more than %s; switch to pool %s (advise mode)", rep.Best, rep.Advantage, rep.ActiveCoin, rep.Target)
+	case Returned:
+		ev.Info("profit_returned", "profit switching: %s earns only %.1f%% more than %s, below the %d%% return margin: back to the main pool %s",
+			rep.ActiveCoin, rep.OverHome, rep.HomeCoin, rep.ReturnMargin, rep.Target)
+	case ReturnHome:
+		ev.Info("profit_recommend", "profit switching: %s earns only %.1f%% more than %s, below the %d%% return margin; go back to the main pool %s (advise mode)",
+			rep.ActiveCoin, rep.OverHome, rep.HomeCoin, rep.ReturnMargin, rep.Target)
+	case AwayStay:
+		if rep.Error != "" {
+			ev.Warn("profit_stay", "profit switching: staying on %s: %s", rep.ActiveCoin, rep.Error)
+		} else {
+			ev.Info("profit_stay", "profit switching: staying on %s; it earns %.1f%% more than %s on the main pool, the return margin is %d%%",
+				rep.ActiveCoin, rep.OverHome, rep.HomeCoin, rep.ReturnMargin)
+		}
 	case SwitchFailed:
 		ev.Warn("profit_switch_failed", "profit switching: switching to pool %s failed: %s", rep.Target, rep.Error)
 	case BelowMargin:
