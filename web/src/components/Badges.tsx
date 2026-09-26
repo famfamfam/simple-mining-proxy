@@ -13,9 +13,26 @@ export function ModeBadge({ mode }: { mode: Mode }) {
   return <span className={`badge ${modeClass[mode]}`}>{t(`mode.${mode}`)}</span>
 }
 
+/** The pool's role, plus "solo" for a solo pool, whatever its role. */
 export function RoleBadge({ pool }: { pool: Pool }) {
   const { t } = useTranslation()
-  if (pool.role === 'active') return <span className="badge accent">{t('role.active')}</span>
-  if (pool.role === 'fallback') return <span className="badge">{t('role.fallback', { n: pool.fallback_position })}</span>
-  return <span className="muted">—</span>
+  let role = null
+  if (pool.role === 'active') role = <span className="badge accent">{t('role.active')}</span>
+  else if (pool.role === 'fallback') role = <span className="badge">{t('role.fallback', { n: pool.fallback_position })}</span>
+  const solo = pool.solo && <SoloBadge />
+  if (!role && !solo) return <span className="muted">—</span>
+  return (
+    <>
+      {role} {solo}
+    </>
+  )
+}
+
+export function SoloBadge() {
+  const { t } = useTranslation()
+  return (
+    <span className="badge solo" title={t('role.soloHint')}>
+      {t('role.solo')}
+    </span>
+  )
 }

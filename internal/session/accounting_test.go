@@ -46,3 +46,40 @@ func TestShareCountedWhenPoolEchoesIDAsString(t *testing.T) {
 		t.Fatalf("worker counters: %+v", w)
 	}
 }
+
+// The monitor watches the shares an ASIC sends, whatever the pool answers:
+// a rejected share still means the ASIC is hashing.
+func TestLastSubmitIgnoresPoolAnswer(t *testing.T) {
+	set, _, err := settings.NewStore(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &Session{
+		maxLine:       64 * 1024,
+		up:            &Upstream{PoolID: "p", PoolName: "P", Template: "acc.{worker}", Password: "x"},
+		srv:           &Server{Settings: set, Events: events.New(10), Stats: stats.NewCollector()},
+		rate:          stats.NewRate(time.Now()),
+		logins:        map[string]string{},
+		pendingAuth:   map[string]authInfo{},
+		pendingSubmit: map[string]submitInfo{},
+	}
+	if in := s.Info(time.Now()); in.LastSubmit != nil {
+		t.Fatalf("last submit before any share: %v", in.LastSubmit)
+	}
+	before := time.Now()
+	line := []byte(`{"id":8,"method":"mining.submit","params":["farm.a","j","0","0","0"]}`)
+	msg, err := stratum.Parse(line)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.submit(line, msg); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.fromPool([]byte(`{"id":8,"result":null,"error":[23,"Low difficulty share",null]}`)); err != nil {
+		t.Fatal(err)
+	}
+	in := s.Info(time.Now())
+	if in.LastSubmit == nil || in.LastSubmit.Before(before) || in.LastShare != nil {
+		t.Fatalf("last submit %v, last accepted share %v", in.LastSubmit, in.LastShare)
+	}
+}

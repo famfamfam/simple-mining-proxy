@@ -17,7 +17,9 @@ It was written for BTC and BCH pools. Pools for XEC, DigiByte (SHA-256) and Frac
 - Charts of hashrate, shares and miners from one hour to one year, stored on disk, including a history for each miner.
 - Optional profit switching between SHA-256 coins (BTC, BCH, BSV, XEC, DGB, FB) using WhatToMine and WhatsOnChain data: advice only, or automatic.
 - Optional timed switching: part of every period on another pool, for example 10 minutes of every 30 on a solo pool. On eCash it waits out the minutes after a block, when the real-time target makes a solo block practically impossible.
+- Optional block hunting on eCash: the farm mines on an XEC solo pool only while a block is no harder than usual and comes back the moment a block is found. It runs along with the timer and profit switching.
 - Network difficulty and the farm's solo odds for every coin, with eCash's Real Time Targeting taken into account.
+- Alerts when an ASIC stops sending shares and when it comes back: in the events and, with a bot set up in the admin UI, in Telegram, where `/status` gives a short summary of the farm.
 - Runtime settings with descriptions and validation, applied without a restart.
 - A self-signed TLS certificate on first start, or your own certificate, reloaded when it changes.
 - Connection limits and timeouts against slow or broken clients.
@@ -151,12 +153,15 @@ These configure the process and take effect after a container restart:
 | `PUBLIC_TCP_PORT` | listener port | TCP port shown in the hints. |
 | `PUBLIC_TLS_PORT` | listener port | TLS port shown in the hints. |
 | `LOG_FORMAT` | `json` | Log format: `json` or `text`. |
+| `TELEGRAM_API_URL` | `https://api.telegram.org` | Bot API server, for a local one or a mirror where Telegram is blocked. `HTTPS_PROXY` works too. |
 
 `docker-compose.yml` fixes the listen addresses inside the container; set the published ports with `PUBLIC_TCP_PORT`, `PUBLIC_TLS_PORT` and `ADMIN_PORT` in `.env`.
 
 ## Runtime settings
 
 Everything else is set in Settings in the admin UI (or with `PUT /api/settings`), stored in `state.json` and applied without a restart. If any value in a change is invalid, nothing is changed.
+
+The screen shows the everyday groups open and the technical ones (timeouts, limits, TLS, history, logging, server) under Advanced, collapsed; the browser remembers what you opened. A group header sums up its state ("10 min of every 30 min", "Advise, every 1 d") and counts the values that differ from the defaults and the unsaved ones. The search box finds a setting by name, key or description.
 
 | Setting | Default | Range | Meaning |
 |---|---|---|---|
@@ -170,6 +175,10 @@ Everything else is set in Settings in the admin UI (or with `PUT /api/settings`)
 | `timed_switch` | off | off, on | Timed switching. |
 | `timed_period` | 30 min | 10 min – 24 h | How often the farm moves to the timer pool. |
 | `timed_duration` | 10 min | 1 min – 12 h | How long it stays there in every period; shorter than `timed_period`. |
+| `hunt_switch` | off | off, on | Block hunting on eCash. |
+| `offline_after` | 1 min | 30 s – 1 h | An ASIC that sends no shares for this long is offline. |
+| `telegram_chats` | empty | chat ids, comma-separated | Chats that get the alerts and may use the bot commands. |
+| `telegram_language` | en | en, ru | Language of the alerts and the bot answers. |
 | `tls_handshake_timeout` | 10 s | 1–60 s | Time a miner has to finish the TLS handshake. |
 | `first_message_timeout` | 15 s | 5 s – 2 min | Time a new connection has to send its first Stratum message. |
 | `upstream_dial_timeout` | 5 s | 1–30 s | Connect and TLS handshake timeout of one pool address. |
@@ -215,7 +224,7 @@ Revenue is estimated from 24-hour averages of network difficulty, block reward (
 
 eCash (XEC) needs a correction. Its nodes enforce Real Time Targeting: besides the target in the block header, a block has to meet a real-time target that depends on how long ago the last blocks arrived. A block 30 seconds after the previous one has to be about 800 times harder, after a minute 25 times, after two minutes it no longer matters. Nobody finds blocks in those minutes, and the difficulty algorithm lowers the header difficulty so that blocks still come every 10 minutes. A difficulty-based estimate therefore overstates what miners get; simulating the node's rule gives 0.757 of it, and XEC revenue and odds are multiplied by that. The formula is the one in Bitcoin ABC, `src/policy/block/rtt.cpp`.
 
-A profit switch works like a manual one: the target pool is checked, the change is saved and miners reconnect gradually. Its reason, `profit`, shows in the events and in the last switch on the Dashboard. If the active pool does not take part, it is left alone. "Check now" only shows the decision and never switches. The time of the last scheduled check is stored in `/data/profit.json`, so a restart does not move the schedule.
+A profit switch works like a manual one: the target pool is checked, the change is saved and miners reconnect gradually. Its reason, `profit`, shows in the events and in the last switch on the Dashboard. If the active pool does not take part, it is left alone. Solo pools never take part. "Check now" only shows the decision and never switches. The time of the last scheduled check is stored in `/data/profit.json`, so a restart does not move the schedule.
 
 On PPLNS pools frequent switching loses earnings. Use FPPS or PPS+ pools and an interval of a day or more, and start with Advise.
 
@@ -223,15 +232,16 @@ On PPLNS pools frequent switching loses earnings. Use FPPS or PPS+ pools and an 
 
 Timed switching sends the farm to another pool for part of every period and brings it back, for example to a solo pool for 10 minutes of every 30 minutes: a third of the hashrate plays the solo lottery.
 
-1. Add the pool, for a solo pool usually with your payout address in the login template (`bc1q....{worker}`), and tick "Switch to this pool on the timer" in its editor. Only one pool can have it.
+1. Add the pool, for a solo pool usually with your payout address in the login template (`bc1q....{worker}`), and tick "Switch to this pool on the timer" in its editor. Only one pool can have it. Tick "Solo pool" too if it is one (see below).
 2. In Settings, turn on timed switching and set the period (30 minutes by default) and the time on the timer pool (10 minutes by default).
 
-Periods start at multiples of the period: with 30 minutes, at :00 and :30. From the start of each, the farm spends the set time on the timer pool: the timer pool is checked and made active, and when the time is up the farm returns to the pool that was active before, with the fallback order from before. While the farm is on the timer pool, the pool it came from is the first fallback. The switches show in the events with the reason `timer`.
+Periods start at multiples of the period: with 30 minutes, at :00 and :30 (after "Start now", from the moment it was pressed). From the start of each, the farm spends the set time on the timer pool: the timer pool is checked and made active, and when the time is up the farm returns to the pool that was active before, with the fallback order from before. While the farm is on the timer pool, the pool it came from is the first fallback. The switches show in the events with the reason `timer`.
 
 - If the timer pool fails its check, the farm stays where it is until the next period.
 - If you switch pools by hand during that time, your choice stays and the timer does not switch back.
 - A restart in the middle does not strand the farm: the way back is saved in `/data/timed.json`.
 - Profit switching waits with its scheduled check until the farm is back, and compares coins for the pool it returns to.
+- "Start now" in the timer panel on the Dashboard does not wait for the next period: the farm goes to the timer pool at once, and the schedule starts over from that moment. With 30-minute periods pressed at 12:17, the farm is there until 12:27 and goes again at 12:47. On the timer pool already, its time there starts over.
 
 When the timer pool mines eCash, the timer follows the real-time target (see profit switching above). It does not go to the pool while a block would be more than 1.2 times harder than its header says, which is the first two minutes or so after a block. When a block arrives while the farm is there and the next one becomes more than twice as hard, the farm goes back to the other pool until that eases, and the time is made up later in the period. With less than a minute of time left, it just stays. When a period ends while the farm is on the timer pool, it stays there for the new period instead of leaving and coming back.
 
@@ -240,6 +250,49 @@ To know when eCash blocks arrive, the proxy keeps one quiet Stratum connection t
 The Dashboard shows the network difficulty of every coin (latest and against the 24-hour average) and the farm's chances to find a block solo at its current hashrate: per hour, per day and the average time to a block, plus the chance per day with the timer. For eCash it also shows the real-time difficulty now and when the last block came, like solo pools do. The market data is cached for 10 minutes; the panel works with profit switching off.
 
 Every switch reconnects all miners within `switch_drain`, so a 30-minute period costs four reconnects an hour. Switching away from a PPLNS pool also loses part of its reward window.
+
+### Block hunting on eCash
+
+Right after an eCash block the next one has to be hundreds of times harder (Real Time Targeting, see profit switching above); about two minutes later it is back to the difficulty in its header, which then stays until the next block. A solo miner on eCash wastes those first minutes after every block. Block hunting skips them: the farm goes to the XEC solo pool once a block is at most 1.2 times harder than its header, and returns to where it was as soon as a block is found, by the farm or anyone else. Waiting longer than those two minutes gains nothing: a block is as likely in any minute after that.
+
+1. Add the eCash solo pool with coin XEC and tick "Solo pool".
+2. In Settings, turn on block hunting.
+
+- The blocks are seen through the connection to the eCash pool described above, and the farm leaves within a fraction of a second of a block. Without that connection hunting waits, and a hunt in progress ends.
+- It runs along with the others. The farm is away for one reason at a time, and the timer comes first: a hunt in progress makes way for the timer's period, and hunting resumes after it. When the timer's pool is the same eCash pool, the farm stays there and only the reason changes. Profit switching picks the pool the farm returns to and waits with its scheduled check while the farm is away.
+- A pool chosen by hand stands: hunting waits for the next eCash block before it moves the farm again. After a failed switch it waits 5 minutes.
+- Every eCash block, about every 10 minutes, costs two reconnects of the farm. The switches show in the events with the reason `hunt`; the event log keeps 2000 entries, about two days of hunting.
+- The Dashboard shows where hunting is now and its last 24 hours; so does the Telegram `/status`.
+
+### Solo pools
+
+"Solo pool" in the pool editor marks a pool that pays only for the blocks the farm finds. It is a mark on top of the role: a solo pool can be active, a fallback or the timer pool. It shows as Solo next to the role in the pool list, on the Dashboard when the farm mines there, in the solo odds next to its coin and in the Telegram `/status`. A solo pool never takes part in profit switching: comparing coins, it could move the whole farm to the lottery for good.
+
+## Monitoring and alerts
+
+A working ASIC sends shares every few seconds. Every 5 seconds the proxy looks at the connected ASICs, and one that has sent no share for `offline_after` (1 minute by default) is offline, whatever the reason: powered off, hung with its connection still open, cut off from the network or pointed at another pool. The connection alone says little: a powered-off ASIC leaves it open until `miner_idle_timeout`.
+
+- An ASIC that shares rarely (low hashrate or a high share difficulty) gets 20 of its usual intervals between shares instead, so a slow miner is not reported between two shares.
+- For 5 minutes after the proxy starts nobody is reported: the ASICs are reconnecting.
+- ASICs are told apart by the worker name. ASICs that share a name are watched as one, and one of them stopping goes unnoticed while the others send shares, so give every ASIC its own name.
+- An ASIC is watched from its first share and dropped from the list after 7 days offline.
+- The state is kept in `/data/monitor.json`: after a restart an ASIC that was already reported is not reported again.
+
+The changes go to the events. To get them in Telegram, in Settings under Monitoring and alerts:
+
+1. Create a bot with [@BotFather](https://t.me/BotFather) and paste its token into "Bot token". The proxy asks Telegram whether the token works before saving it, and the bot starts at once, without a restart. The token is kept in `state.json` and the API never returns it.
+2. Send `/start` to the bot from your chat; for a group, add the bot to it first. A chat that is not allowed yet gets its id in the answer.
+3. Put the id into `telegram_chats` (several ids are separated by commas) and choose the language. "Send a test message" checks the setup.
+
+The bot asks Telegram for new messages itself (long polling), so the proxy needs no public address or webhook. It answers only the chats in `telegram_chats`:
+
+| Command | Answer |
+|---|---|
+| `/status` | Hashrate, how many ASICs are mining, the pool and its state, the timer, shares since start, the ASICs without shares |
+| `/miners` | Every ASIC with its hashrate, or how long it has been silent |
+| `/help` | The commands |
+
+The alerts are kept few. A message goes out at most once a minute and holds everything since the previous one. The first comes 10 seconds after a change, so a rack that loses power is one message. An ASIC that comes back before the message is sent is left out of it. An ASIC that has already dropped out and come back within the hour is reported at most every 15 minutes, with the state it is in then. The events keep every change.
 
 ## API
 
@@ -251,7 +304,7 @@ The admin UI uses a JSON API under `/api/`. Scripts authenticate with `Authoriza
 | GET | `/api/status` | Mode, active pool, miners, shares, hashrate |
 | GET | `/api/miners` | Connected miners |
 | POST | `/api/miners/reconnect` | Reconnect all miners over `switch_drain` |
-| GET | `/api/events?limit=100` | Recent events |
+| GET | `/api/events?limit=100&level=warn` | Recent events; `level` (info, warn, error) leaves out the lower ones |
 | GET | `/api/pools` | Pools; passwords are never returned |
 | POST | `/api/pools` | Add a pool |
 | PUT | `/api/pools/{id}?reconnect=true` | Change a pool; `reconnect` applies it to connected miners now |
@@ -261,12 +314,15 @@ The admin UI uses a JSON API under `/api/`. Scripts authenticate with `Authoriza
 | POST | `/api/pools/{id}/activate?force=true` | Make a pool active; `force` skips the check |
 | PUT | `/api/fallback` | Fallback order: `{"pools": ["pool_b", "pool_c"]}` |
 | GET, PUT | `/api/settings` | Runtime settings; `null` resets a value to its default |
+| PUT | `/api/telegram/token` | Set the Telegram bot token after Telegram accepts it: `{"token": "..."}`; `""` removes it |
+| POST | `/api/telegram/test` | Send a test message to the Telegram chats |
 | GET | `/api/history?from=&to=&points=` | Totals and per-pool history; times in unix seconds |
 | GET | `/api/history/worker?name=&from=&to=&points=` | One miner's history and a summary of the range |
 | GET | `/api/history/workers?from=&to=` | Every miner seen in the range |
 | GET | `/api/profit` | Profit switching status and the last report |
 | POST | `/api/profit/check` | Compare the coins now; never switches |
-| GET | `/api/timed` | Timed switching: target pool, time still due, next period, eCash wait |
+| GET | `/api/timed` | Timed switching: target pool, time still due, next period, eCash wait; block hunting in `hunt` |
+| POST | `/api/timed/start` | Go to the timer pool now and restart the schedule from this moment |
 | GET | `/api/network` | Difficulty, block reward, price and efficiency of the coins; eCash real-time target |
 
 Errors have the form `{"error": "validation", "key": "...", "params": {...}, "message": "..."}` with status 400, 404, 409 or 422 (pool check failed). `message` is English text for scripts; the UI translates `key` with `params`.
@@ -277,7 +333,7 @@ Allow the Stratum ports only from your farms' IP addresses where you can. Ports 
 
 `max_conn_per_ip` is off by default because a farm usually connects from a single NAT address. If you turn it on, leave room above the number of miners behind one address.
 
-The proxy makes outgoing HTTPS requests for market data to whattomine.com and api.whatsonchain.com: with profit switching on, once per interval, and while the Dashboard is open, at most once every 10 minutes. With an eCash pool configured, it also reads recent block times from api.blockchair.com once at start and keeps one Stratum connection to that pool.
+The proxy makes outgoing HTTPS requests for market data to whattomine.com and api.whatsonchain.com: with profit switching on, once per interval, and while the Dashboard is open, at most once every 10 minutes. With an eCash pool configured, it also reads recent block times from api.blockchair.com once at start and keeps one Stratum connection to that pool. With a Telegram bot set up, it keeps a long-polling HTTPS request open to api.telegram.org.
 
 ## Operations
 
@@ -294,7 +350,7 @@ git pull
 docker compose up -d --build
 ```
 
-`state.json` stores pool passwords in plain text: protect the backups and access to the Docker host.
+`state.json` stores pool passwords and the Telegram bot token in plain text: protect the backups and access to the Docker host.
 
 On stop (SIGTERM) the proxy stops accepting connections, closes the miner sessions and exits within 10 seconds. Miners reconnect by themselves.
 
@@ -329,13 +385,14 @@ For UI work, run `npm run dev` in `web/`: Vite reloads the page on changes and f
 | `internal/stats`, `internal/history` | Counters in memory, history on disk |
 | `internal/profit` | Coin revenue data and profit switching |
 | `internal/rtt` | eCash Real Time Targeting: the formula and the connection that sees blocks arrive |
-| `internal/timed` | Timed switching to another pool and back |
+| `internal/timed` | Timed switching and block hunting: away to another pool and back |
+| `internal/monitor`, `internal/telegram` | ASICs that stop sending shares; the Telegram bot and its alerts |
 | `internal/admin`, `internal/apierr` | REST API, login and brute-force protection, error keys |
 | `internal/settings`, `internal/state` | Runtime settings, `state.json` |
 | `internal/tlsutil`, `internal/atomicfile` | TLS certificates, atomic file writes |
 | `web/src` | Admin UI in React and TypeScript; translations in `web/src/i18n/locales` |
 
-The server does not translate text. API errors carry a key and parameters, and the UI translates them; `web/src/i18n/locales.test.ts` checks that every key used in the Go code and every setting is translated into both languages.
+The server does not translate text. API errors carry a key and parameters, and the UI translates them; `web/src/i18n/locales.test.ts` checks that every key used in the Go code and every setting is translated into both languages. The Telegram bot is the exception: its messages are made on the server, from the English and Russian texts in `internal/telegram/texts.go`.
 
 ## Limitations
 

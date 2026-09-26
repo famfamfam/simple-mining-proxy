@@ -1,5 +1,6 @@
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
+import type { EventLevel } from './types'
 
 /** Live screens refresh every few seconds while the tab is visible. */
 export const POLL_MS = 5000
@@ -9,7 +10,7 @@ export const keys = {
   status: ['status'] as const,
   pools: ['pools'] as const,
   miners: ['miners'] as const,
-  events: (limit: number) => ['events', limit] as const,
+  events: (limit: number, level: EventLevel) => ['events', limit, level] as const,
   settings: ['settings'] as const,
   timed: ['timed'] as const,
 }
@@ -18,10 +19,15 @@ export const useStatus = () => useQuery({ queryKey: keys.status, queryFn: api.st
 
 export const usePools = () => useQuery({ queryKey: keys.pools, queryFn: api.pools, refetchInterval: POLL_MS })
 
+// Same cache entry as usePools, without the 5-second poll: for screens that
+// only need pool names (e.g. Settings) and would otherwise re-render their
+// whole body on every tick for no reason.
+export const usePoolNames = () => useQuery({ queryKey: keys.pools, queryFn: api.pools })
+
 export const useMiners = () => useQuery({ queryKey: keys.miners, queryFn: api.miners, refetchInterval: POLL_MS })
 
-export const useEvents = (limit: number) =>
-  useQuery({ queryKey: keys.events(limit), queryFn: () => api.events(limit), refetchInterval: POLL_MS })
+export const useEvents = (limit: number, level: EventLevel = 'info') =>
+  useQuery({ queryKey: keys.events(limit, level), queryFn: () => api.events(limit, level), refetchInterval: POLL_MS })
 
 /** History points are per minute: refreshing more often shows nothing new. */
 export const HISTORY_POLL_MS = 60_000

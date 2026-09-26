@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -20,6 +21,7 @@ import (
 	"github.com/famfamfam/simple-mining-proxy/internal/settings"
 	"github.com/famfamfam/simple-mining-proxy/internal/state"
 	"github.com/famfamfam/simple-mining-proxy/internal/stats"
+	"github.com/famfamfam/simple-mining-proxy/internal/telegram"
 	"github.com/famfamfam/simple-mining-proxy/internal/timed"
 )
 
@@ -30,7 +32,7 @@ type env struct {
 	ev  *events.Log
 }
 
-func newEnv(t *testing.T) *env {
+func newEnv(t *testing.T, opts ...func(*Deps)) *env {
 	st, err := state.Open(filepath.Join(t.TempDir(), "state.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -53,9 +55,12 @@ func newEnv(t *testing.T) *env {
 	sw := profit.New(profit.Deps{Settings: set, Pools: mgr, Events: ev, Path: filepath.Join(t.TempDir(), "profit.json"),
 		Fetch: func(context.Context) (*profit.Market, error) { return market, nil }})
 	ts := timed.New(timed.Deps{Settings: set, Pools: mgr, Events: ev, Path: filepath.Join(t.TempDir(), "timed.json")})
-	h := New(Deps{Config: cfg, State: st, Settings: set, Pools: mgr,
-		Registry: reg, Stats: stats.NewCollector(), History: hist, Profit: sw, Timed: ts, Events: ev, Started: time.Now()})
-	return &env{h: h, st: st, set: set, ev: ev}
+	d := Deps{Config: cfg, State: st, Settings: set, Pools: mgr,
+		Registry: reg, Stats: stats.NewCollector(), History: hist, Profit: sw, Timed: ts, Events: ev, Started: time.Now()}
+	for _, o := range opts {
+		o(&d)
+	}
+	return &env{h: New(d), st: st, set: set, ev: ev}
 }
 
 func (e *env) do(method, path, body string, hdr map[string]string) *httptest.ResponseRecorder {
@@ -325,5 +330,122 @@ func TestLogoutRequiresJSON(t *testing.T) {
 	e.h.ServeHTTP(w, r)
 	if w.Code != http.StatusUnsupportedMediaType {
 		t.Fatalf("form logout: %d", w.Code)
+	}
+}
+
+func TestTelegramWithoutToken(t *testing.T) {
+	e := newEnv(t)
+	w := e.do("PUT", "/api/settings", `{"telegram_chats":"100,-2001"}`, bearer)
+	if w.Code != http.StatusOK {
+		t.Fatalf("save chats: %d %s", w.Code, w.Body)
+	}
+	var body struct {
+		Server struct {
+			Telegram struct {
+				Configured bool `json:"configured"`
+				Chats      int  `json:"chats"`
+			} `json:"telegram"`
+		} `json:"server"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Server.Telegram.Configured || body.Server.Telegram.Chats != 2 {
+		t.Fatalf("telegram = %+v", body.Server.Telegram)
+	}
+	w = e.do("POST", "/api/telegram/test", `{}`, bearer)
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), `"key":"telegram_no_token"`) {
+		t.Fatalf("test without a token: %d %s", w.Code, w.Body)
+	}
+	w = e.do("PUT", "/api/settings", `{"telegram_chats":"100, 200"}`, bearer)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("chats with a space: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestTelegramToken(t *testing.T) {
+	const good = "123456:GOODGOODGOODGOODGOODGOOD00"
+	tg := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/bot"+good+"/getMe" {
+			fmt.Fprint(w, `{"ok":true,"result":{"username":"farm_bot"}}`)
+			return
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprint(w, `{"ok":false,"error_code":401,"description":"Unauthorized"}`)
+	}))
+	defer tg.Close()
+	var bot *telegram.Bot
+	e := newEnv(t, func(d *Deps) {
+		bot = telegram.New(telegram.Deps{APIURL: tg.URL, Settings: d.Settings, Events: d.Events})
+		d.Telegram = bot
+	})
+
+	w := e.do("PUT", "/api/telegram/token", `{"token":"not a token"}`, bearer)
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), `"key":"telegram_token_format"`) {
+		t.Fatalf("bad format: %d %s", w.Code, w.Body)
+	}
+	w = e.do("PUT", "/api/telegram/token", `{"token":"123456:WRONGWRONGWRONGWRONGWRONG"}`, bearer)
+	if w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), `"key":"telegram_token_rejected"`) {
+		t.Fatalf("rejected token: %d %s", w.Code, w.Body)
+	}
+	if e.st.Current().TelegramToken != "" || bot.Status().Configured {
+		t.Fatal("a rejected token was saved")
+	}
+
+	w = e.do("PUT", "/api/telegram/token", `{"token":" `+good+` "}`, bearer)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"username":"farm_bot"`) {
+		t.Fatalf("good token: %d %s", w.Code, w.Body)
+	}
+	if e.st.Current().TelegramToken != good || !bot.Status().Configured {
+		t.Fatal("the token was not saved or applied")
+	}
+	for _, path := range []string{"/api/settings", "/api/status", "/api/events"} {
+		if w := e.do("GET", path, "", bearer); strings.Contains(w.Body.String(), "GOODGOOD") {
+			t.Fatalf("%s returns the token: %s", path, w.Body)
+		}
+	}
+
+	w = e.do("PUT", "/api/telegram/token", `{"token":""}`, bearer)
+	if w.Code != http.StatusOK || strings.Contains(w.Body.String(), `"configured":true`) {
+		t.Fatalf("remove: %d %s", w.Code, w.Body)
+	}
+	if e.st.Current().TelegramToken != "" || bot.Status().Configured {
+		t.Fatal("the token was not removed")
+	}
+	w = e.do("POST", "/api/telegram/test", `{}`, bearer)
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), `"key":"telegram_no_token"`) {
+		t.Fatalf("test without a token: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestTimedStart(t *testing.T) {
+	e := newEnv(t)
+	w := e.do("POST", "/api/timed/start", `{}`, bearer)
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), `"key":"timed_off"`) {
+		t.Fatalf("timer off: %d %s", w.Code, w.Body)
+	}
+	if w := e.do("PUT", "/api/settings", `{"timed_switch":"on"}`, bearer); w.Code != http.StatusOK {
+		t.Fatalf("turn on: %d %s", w.Code, w.Body)
+	}
+	w = e.do("POST", "/api/timed/start", `{}`, bearer)
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), `"key":"timed_no_target"`) {
+		t.Fatalf("no target: %d %s", w.Code, w.Body)
+	}
+}
+
+// A solo pool can hold any role but never takes part in profit switching.
+func TestSoloPool(t *testing.T) {
+	e := newEnv(t)
+	w := e.do("POST", "/api/pools", `{"name":"Solo","coin":"xec","host":"solo.example.com","port":3333,"username":"addr.{worker}","solo":true,"profit_switch":true}`, bearer)
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), `"pool_solo_profit"`) {
+		t.Fatalf("solo with profit switching: %d %s", w.Code, w.Body)
+	}
+	w = e.do("POST", "/api/pools", `{"name":"Solo","coin":"xec","host":"solo.example.com","port":3333,"username":"addr.{worker}","solo":true}`, bearer)
+	if w.Code != http.StatusCreated && w.Code != http.StatusOK {
+		t.Fatalf("solo pool: %d %s", w.Code, w.Body)
+	}
+	w = e.do("GET", "/api/pools", "", bearer)
+	if !strings.Contains(w.Body.String(), `"solo":true`) || !strings.Contains(w.Body.String(), `"role":"active"`) {
+		t.Fatalf("pools: %s", w.Body)
 	}
 }

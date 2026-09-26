@@ -55,7 +55,9 @@
   },
   "role": {
     "active": "Active",
-    "fallback": "Fallback #{{n}}"
+    "fallback": "Fallback #{{n}}",
+    "solo": "Solo",
+    "soloHint": "Solo pool: pays only for the blocks the farm finds"
   },
   "dashboard": {
     "mode": "Mode",
@@ -165,7 +167,11 @@
     "profitHelp": "Profit switching compares the coins of the pools marked here and can make the most profitable one active. The coin must be set: BTC, BCH, BSV, XEC, DGB or FB.",
     "timed": "Timer",
     "timedTarget": "Switch to this pool on the timer",
-    "timedHelp": "For part of every period (Settings → Timed switching) the farm mines on this pool, for example a solo pool, and then returns. Only one pool can have this: marking it here clears it on the other pool."
+    "timedHelp": "For part of every period (Settings → Timed switching) the farm mines on this pool, for example a solo pool, and then returns. Only one pool can have this: marking it here clears it on the other pool.",
+    "solo": "Solo",
+    "soloPool": "Solo pool",
+    "soloHelp": "A pool that pays only for the blocks the farm finds, such as solo.ckpool or molepool. It can be active, a fallback or the timer pool; it is marked Solo in the pool list, on the Dashboard and in Telegram.",
+    "profitSolo": "A solo pool does not take part in profit switching: comparing coins, it could move the whole farm to a lottery."
   },
   "fallback": {
     "title": "Fallback pools",
@@ -203,7 +209,7 @@
   },
   "events": {
     "title": "Events",
-    "help": "The last 500 events in memory; the list starts over after a restart. Full log: docker logs.",
+    "help": "Events kept in memory (up to 2000; the newest 500 of the chosen level are shown); the list starts over after a restart. Full log: docker logs.",
     "all": "All",
     "warnings": "Warnings and errors",
     "errors": "Errors",
@@ -239,7 +245,9 @@
       "limits": "Limits (overload protection)",
       "tls": "TLS",
       "history": "History and charts",
-      "logging": "Logging"
+      "logging": "Logging",
+      "alerts": "Monitoring and alerts",
+      "hunt": "eCash block hunting (XEC)"
     },
     "appliesTo": {
       "immediately": "immediately",
@@ -354,11 +362,36 @@
       },
       "timed_period": {
         "title": "Timer period",
-        "desc": "How often the farm moves to the timer pool. The time on it starts at multiples of the period: every 30 minutes means at :00 and :30."
+        "desc": "How often the farm moves to the timer pool. The time on it starts at multiples of the period: every 30 minutes means at :00 and :30. “Start now” on the Dashboard starts a period at that moment, and the next ones follow from it."
       },
       "timed_duration": {
         "title": "Time on the timer pool",
         "desc": "How long the farm mines on the timer pool in every period; shorter than the period. 10 minutes every 30 minutes is a third of the hashrate."
+      },
+      "offline_after": {
+        "title": "No shares for",
+        "desc": "An ASIC that has sent no shares for this long is offline: the event goes to Events and, with the Telegram bot set up, to the chats. A working ASIC sends a share every few seconds, so a minute tells an outage from a pause. An ASIC that shares rarely (low hashrate or a high share difficulty) gets 20 of its usual intervals between shares instead. For 5 minutes after the proxy starts nobody is reported: ASICs are reconnecting. ASICs are told apart by the worker name, so give every ASIC its own."
+      },
+      "telegram_chats": {
+        "title": "Telegram chats",
+        "desc": "Ids of the chats that get the alerts and may use the bot commands (/status, /miners), comma-separated. To learn the id, send /start to the bot from the chat (add the bot to a group first): a chat that is not on the list gets its id in the answer. Group ids start with a minus.",
+        "note": "digits, a leading minus and commas, no spaces"
+      },
+      "telegram_language": {
+        "title": "Telegram language",
+        "desc": "The language of the alerts and the bot answers.",
+        "options": {
+          "en": "English",
+          "ru": "Русский"
+        }
+      },
+      "hunt_switch": {
+        "title": "Block hunting",
+        "desc": "The farm goes to the XEC solo pool (a pool with coin XEC marked Solo pool) while an eCash block is no harder than usual, and returns to where it was as soon as anyone finds a block, the farm or someone else. Right after a block eCash wants one hundreds of times harder (Real Time Targeting), about two minutes later a usual one; after that the difficulty does not fall until the next block, so there is nothing to wait for. Every eCash block, about every 10 minutes, costs two reconnects of the farm. Works along with the timer and profit switching: the timer comes first, and profit switching picks the pool the farm returns to. The proxy has to be connected to the eCash pool to see blocks as they arrive.",
+        "options": {
+          "off": "Off",
+          "on": "On"
+        }
       }
     },
     "server": {
@@ -379,6 +412,47 @@
       "adminListen": "Admin UI in the container",
       "dataDir": "Data directory",
       "logFormat": "Log format"
+    },
+    "emptyValue": "empty",
+    "telegram": {
+      "bot": "Telegram bot",
+      "off": "not set",
+      "connecting": "connecting…",
+      "chats": "Chats",
+      "noChats": "none: add a chat id above",
+      "error": "Last error",
+      "help": "Alerts come to the chats at most once a minute, collected into one message. An ASIC that comes back before the message is sent is left out, and one that keeps dropping out is reported at most every 15 minutes. Every change is in Events.",
+      "setup": "Paste the bot token above to get alerts in Telegram. Without it the alerts go to Events only.",
+      "test": "Send a test message",
+      "sent": "Test message sent",
+      "token": "Bot token",
+      "tokenReplace": "set; paste a new one to replace it",
+      "tokenHelp": "Create a bot with @BotFather (/newbot) and paste its token here. The proxy checks it with Telegram before saving. The token is kept in state.json on the server and is never shown again.",
+      "tokenSaved": "Bot {{bot}} connected",
+      "tokenRemoved": "Bot token removed",
+      "remove": "Remove",
+      "removeTitle": "Remove the bot token?",
+      "removeText": "The bot stops answering and alerts go to Events only. The chats stay in the settings."
+    },
+    "search": "Find a setting",
+    "expandAll": "Expand all",
+    "collapseAll": "Collapse all",
+    "groupsNav": "Setting groups",
+    "advanced": "Advanced",
+    "advancedHelp": "Timeouts, limits, TLS, history and logging: they rarely need changing.",
+    "nothingFound": "No setting matches the search",
+    "more": "More",
+    "less": "Less",
+    "modifiedHint": "Settings in this group that differ from the defaults",
+    "badgeUnsaved": "unsaved: {{count}}",
+    "badgeErrors": "errors: {{count}}",
+    "summary": {
+      "switching": "reconnect over {{drain}}, failback after {{failback}}",
+      "profit": "{{mode}}, every {{every}}",
+      "timed": "{{duration}} of every {{period}}",
+      "alerts": "no shares for {{after}} · {{bot}}",
+      "noBot": "no Telegram bot",
+      "history": "per minute {{detail}}, hourly {{total}}"
     }
   },
   "errors": {
@@ -440,7 +514,18 @@
     "history_range": "The start of the period must be before its end",
     "setting_history_below_detail": "must not be less than “Detailed history” ({{detail}})",
     "history_worker": "The miner name is required",
-    "setting_timed_duration": "must be shorter than “Timer period” ({{period}})"
+    "setting_timed_duration": "must be shorter than “Timer period” ({{period}})",
+    "telegram_no_token": "Set the Telegram bot token first",
+    "telegram_no_chats": "No Telegram chats: add a chat id to “Telegram chats” and save",
+    "telegram_failed": "Telegram did not take the message: {{error}}",
+    "telegram_token_required": "The token is required; an empty one removes it",
+    "telegram_token_format": "This is not a bot token: it looks like 123456789:AA… from @BotFather",
+    "telegram_token_rejected": "Telegram rejected the token: {{error}}",
+    "telegram_unreachable": "Cannot reach Telegram to check the token: {{error}}",
+    "pool_solo_profit": "a solo pool cannot take part in profit switching",
+    "timed_off": "Timed switching is off: turn it on in the settings",
+    "timed_no_target": "No pool is marked for timed switching",
+    "events_level": "The level must be info, warn or error"
   },
   "stats": {
     "title": "Charts",
@@ -521,7 +606,9 @@
     },
     "onTimer": "The farm is on the timer pool {{pool}} until {{until}}. Coins are compared for {{home}}, where it returns; the timer does not change the choice of the main pool.",
     "homeCoin": "main",
-    "timerNow": "on the timer now"
+    "timerNow": "on the timer now",
+    "onHunt": "The farm is hunting a block on {{pool}} now. Coins are compared for {{home}}, where it returns after the block.",
+    "huntNow": "hunting now"
   },
   "timed": {
     "badge": "Timer",
@@ -529,7 +616,14 @@
     "now": "On {{pool}} until {{until}}, then back to {{home}}.",
     "plan": "{{pool}} for {{length}} every {{every}}; next at {{next}}.",
     "failed": "The last switch failed: {{error}}",
-    "waiting": "A block just arrived: {{pool}} is x{{factor}} harder right now, so the farm stays here until that eases. Still due in this period: {{left}}."
+    "waiting": "A block just arrived: {{pool}} is x{{factor}} harder right now, so the farm stays here until that eases. Still due in this period: {{left}}.",
+    "startNow": "Start now",
+    "startHint": "Do not wait for the next period: go to the timer pool now and restart the schedule from this moment",
+    "startTitle": "Start the timer now?",
+    "startText": "The farm goes to {{pool}} for {{length}} right away, and all miners reconnect. The schedule starts over: the next time is {{every}} after now.",
+    "restartText": "The farm is on {{pool}} already: its time there starts over, {{length}} from now. The next time is {{every}} after now.",
+    "startConfirm": "Start",
+    "started": "Timer started: {{pool}} for {{length}}"
   },
   "network": {
     "title": "Network difficulty and solo odds",
@@ -552,5 +646,18 @@
     "rttOffline": "no live data from the pool",
     "lastBlock": "block {{ago}}",
     "rttNote": "For {{coins}} the chances include Real Time Targeting: right after every block the next one has to be far harder (x25 after a minute), so over time a miner finds about {{pct}}% of what the difficulty alone suggests. The live value comes from the eCash pool."
+  },
+  "hunt": {
+    "badge": "XEC hunt",
+    "noTarget": "Hunting is on, but there is no pool with coin XEC marked Solo pool.",
+    "now": "On {{pool}} since {{since}}: an eCash block is no harder than usual. Back to {{home}} as soon as a block is found.",
+    "blind": "No connection to the eCash pool: hunting waits until blocks are seen again.",
+    "hold": "A pool was chosen by hand: hunting resumes after the next eCash block.",
+    "timer": "The timer holds the farm now: hunting resumes after it.",
+    "waiting": "Waiting: an eCash block is x{{factor}} harder than usual now.",
+    "retrying": "Paused after a failed switch; next try at {{at}}.",
+    "ready": "Good time for {{pool}}: switching in a few seconds.",
+    "day": "Last 24 hours: {{time}} on XEC, hunts: {{n}}.",
+    "failed": "The last switch failed: {{error}}"
   }
 }

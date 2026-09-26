@@ -52,6 +52,16 @@ func (r *Registry) List() []*Session {
 	return out
 }
 
+// Infos returns a row per live session, ordered by id.
+func (r *Registry) Infos(now time.Time) []Info {
+	list := r.List()
+	out := make([]Info, 0, len(list))
+	for _, s := range list {
+		out = append(out, s.Info(now))
+	}
+	return out
+}
+
 // Workers counts live sessions per ASIC login; sessions not authorized yet
 // are left out.
 func (r *Registry) Workers() map[string]int {

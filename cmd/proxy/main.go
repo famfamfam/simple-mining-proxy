@@ -22,6 +22,7 @@ import (
 	"github.com/famfamfam/simple-mining-proxy/internal/events"
 	"github.com/famfamfam/simple-mining-proxy/internal/history"
 	"github.com/famfamfam/simple-mining-proxy/internal/listener"
+	"github.com/famfamfam/simple-mining-proxy/internal/monitor"
 	"github.com/famfamfam/simple-mining-proxy/internal/pool"
 	"github.com/famfamfam/simple-mining-proxy/internal/profit"
 	"github.com/famfamfam/simple-mining-proxy/internal/rtt"
@@ -29,6 +30,7 @@ import (
 	"github.com/famfamfam/simple-mining-proxy/internal/settings"
 	"github.com/famfamfam/simple-mining-proxy/internal/state"
 	"github.com/famfamfam/simple-mining-proxy/internal/stats"
+	"github.com/famfamfam/simple-mining-proxy/internal/telegram"
 	"github.com/famfamfam/simple-mining-proxy/internal/timed"
 	"github.com/famfamfam/simple-mining-proxy/internal/tlsutil"
 )
@@ -99,7 +101,9 @@ func run() error {
 	level.Set(parseLevel(set.Get().LogLevel))
 	set.OnChange(func(v *settings.Values) { level.Set(parseLevel(v.LogLevel)) })
 
-	ev := events.New(500)
+	// Block hunting adds a few events per eCash block (every ~10 minutes):
+	// room for about two days of them next to everything else.
+	ev := events.New(2000)
 	reg := session.NewRegistry(ev)
 	set.OnChange(reg.RefreshIdleDeadlines)
 	collector := stats.NewCollector()
@@ -123,9 +127,14 @@ func run() error {
 	// Market data requests are bounded by the callers' contexts.
 	httpClient := &http.Client{}
 	// eCash blocks right after a block must meet a harder real-time target:
-	// a quiet connection to an eCash pool shows when blocks arrive.
-	watcher := rtt.NewWatcher(rtt.WatchDeps{Settings: set, Pools: mgr, Seed: rtt.Blockchair(httpClient, rtt.BlockchairURL)})
-	timedSw := timed.New(timed.Deps{
+	// a quiet connection to an eCash pool shows when blocks arrive. A block
+	// wakes the timer at once, so block hunting leaves without delay.
+	var timedSw *timed.Switcher
+	watcher := rtt.NewWatcher(rtt.WatchDeps{
+		Settings: set, Pools: mgr, Seed: rtt.Blockchair(httpClient, rtt.BlockchairURL),
+		OnBlock: func() { timedSw.Kick() },
+	})
+	timedSw = timed.New(timed.Deps{
 		Settings: set, Pools: mgr, Events: ev, Path: filepath.Join(cfg.DataDir, "timed.json"),
 		Hardness: func(p state.Pool) float64 {
 			if p.Coin == rtt.Coin {
@@ -133,11 +142,24 @@ func run() error {
 			}
 			return 1
 		},
+		Live: func(p state.Pool) bool { return p.Coin == rtt.Coin && watcher.Live() },
 	})
 	profitSw := profit.New(profit.Deps{
 		Settings: set, Pools: mgr, Events: ev, Path: filepath.Join(cfg.DataDir, "profit.json"),
 		Fetch: profit.WithBSV(httpClient, profit.WhatsOnChainURL, profit.WhatToMine(httpClient, profit.WhatToMineURL)),
 		Home:  timedSw.Home,
+	})
+
+	// ASICs that stop sending shares go to the events, and to Telegram once
+	// a bot token is set in the admin UI.
+	var mon *monitor.Monitor
+	bot := telegram.New(telegram.Deps{
+		Token: st.Current().TelegramToken, APIURL: cfg.TelegramAPIURL, Client: httpClient, Settings: set, Events: ev,
+		Miners: func() []monitor.Miner { return mon.Miners() },
+		Farm:   farmSummary(mgr, collector, timedSw, started),
+	})
+	mon = monitor.New(monitor.Deps{
+		Settings: set, Miners: reg.Infos, Events: ev, Path: filepath.Join(cfg.DataDir, "monitor.json"), Notify: bot.Notify,
 	})
 
 	var certs *tlsutil.Certs
@@ -184,7 +206,8 @@ func run() error {
 	httpSrv := &http.Server{
 		Handler: admin.New(admin.Deps{
 			Config: cfg, State: st, Settings: set, Pools: mgr, Registry: reg,
-			Stats: collector, History: hist, Profit: profitSw, Timed: timedSw, RTT: watcher, Events: ev, Certs: certs, Started: started,
+			Stats: collector, History: hist, Profit: profitSw, Timed: timedSw, RTT: watcher, Telegram: bot,
+			Events: ev, Certs: certs, Started: started,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
@@ -215,6 +238,9 @@ func run() error {
 	go profitSw.Run(ctx)
 	go timedSw.Run(ctx)
 	go watcher.Run(ctx)
+	monDone := make(chan struct{})
+	go func() { mon.Run(ctx); close(monDone) }()
+	go bot.Run(ctx)
 	httpErr := make(chan error, 1)
 	go func() {
 		slog.Info("admin UI listening", "addr", adminLn.Addr().String())
@@ -245,10 +271,46 @@ func run() error {
 	case <-shCtx.Done():
 		slog.Warn("some sessions did not finish in time")
 	}
-	// The history writes the unfinished minute when ctx is done.
-	select {
-	case <-histDone:
-	case <-shCtx.Done():
+	// The history writes the unfinished minute and the monitor the last
+	// shares when ctx is done.
+	for _, done := range []chan struct{}{histDone, monDone} {
+		select {
+		case <-done:
+		case <-shCtx.Done():
+		}
 	}
 	return nil
+}
+
+// farmSummary is the part of the Telegram /status that the monitor does not
+// know.
+func farmSummary(mgr *pool.Manager, collector *stats.Collector, timedSw *timed.Switcher, started time.Time) func() telegram.Farm {
+	return func() telegram.Farm {
+		now := time.Now()
+		snap := mgr.Snapshot()
+		st := collector.Snapshot(now)
+		f := telegram.Farm{
+			Hashrate: st.HashrateHs, Mode: mgr.Mode(),
+			Accepted: st.Accepted, Rejected: st.Rejected, Uptime: now.Sub(started),
+		}
+		if p, ok := snap.Get(mgr.Effective()); ok {
+			f.Pool, f.Coin, f.Solo = p.Name, p.Coin, p.Solo
+		}
+		ts := timedSw.Status()
+		if ts.Home != "" && ts.Until != nil {
+			if p, ok := snap.Get(ts.Target); ok {
+				f.Timer = &telegram.Timer{Pool: p.Name, Left: ts.Until.Sub(now)}
+			}
+		}
+		if h := ts.Hunt; h.Mode == settings.HuntOn && h.Target != "" {
+			if p, ok := snap.Get(h.Target); ok {
+				f.Hunt = &telegram.Hunt{Pool: p.Name, Hardness: h.Hardness, Live: h.Live,
+					Stints: h.Stints, Time: time.Duration(h.Seconds * float64(time.Second))}
+				if h.Since != nil {
+					f.Hunt.For = now.Sub(*h.Since)
+				}
+			}
+		}
+		return f
+	}
 }

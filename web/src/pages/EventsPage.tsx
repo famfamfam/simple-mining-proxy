@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useEvents } from '../api/queries'
-import type { EventItem } from '../api/types'
+import type { EventItem, EventLevel } from '../api/types'
 import { QueryState } from '../components/Panel'
 import { locale } from '../i18n'
 import { formatDateTime } from '../lib/format'
@@ -24,20 +24,13 @@ export function EventList({ events }: { events: EventItem[] }) {
   )
 }
 
-type Level = 'all' | 'warn' | 'error'
-
-const shown: Record<Level, (e: EventItem) => boolean> = {
-  all: () => true,
-  warn: (e) => e.level !== 'info',
-  error: (e) => e.level === 'error',
-}
-
 export function EventsPage() {
   const { t } = useTranslation()
-  const events = useEvents(500)
-  const [level, setLevel] = useState<Level>('all')
-  const filters: [Level, string][] = [
-    ['all', t('events.all')],
+  // The server filters by level: warnings stay reachable behind many info events.
+  const [level, setLevel] = useState<EventLevel>('info')
+  const events = useEvents(500, level)
+  const filters: [EventLevel, string][] = [
+    ['info', t('events.all')],
     ['warn', t('events.warnings')],
     ['error', t('events.errors')],
   ]
@@ -59,7 +52,7 @@ export function EventsPage() {
         ))}
       </div>
       <QueryState pending={events.isPending} error={events.error}>
-        <EventList events={(events.data ?? []).filter(shown[level])} />
+        <EventList events={events.data ?? []} />
       </QueryState>
     </>
   )

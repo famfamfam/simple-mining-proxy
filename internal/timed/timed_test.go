@@ -86,6 +86,7 @@ type env struct {
 	clock time.Time
 	path  string
 	hard  float64 // what Hardness reports for the target
+	blind bool    // Live reports false: eCash blocks are not seen
 }
 
 // newEnv has pools main (active), backup (fallback) and solo (the target).
@@ -123,7 +124,8 @@ func newEnv(t *testing.T, solo state.Address) *env {
 // restart builds a new switcher on the same state file, as after a restart.
 func (e *env) restart() *Switcher {
 	sw := New(Deps{Settings: e.set, Pools: e.mgr, Events: e.ev, Path: e.path,
-		Hardness: func(state.Pool) float64 { return e.hard }})
+		Hardness: func(state.Pool) float64 { return e.hard },
+		Live:     func(state.Pool) bool { return !e.blind }})
 	sw.now = func() time.Time { return e.clock }
 	return sw
 }
@@ -364,4 +366,96 @@ func TestStatus(t *testing.T) {
 	if st := e.sw.Status(); st.Home != "" || st.Until != nil {
 		t.Fatalf("after the window: %+v", st)
 	}
+}
+
+// Start now: the period begins at once, the farm goes to the target, and the
+// schedule runs from then on, also after a restart.
+func TestStartNow(t *testing.T) {
+	e := newEnv(t, stratumPool(t))
+	e.at(0)
+	e.at(10 * time.Minute) // this period's time is used up
+	e.want("main", "backup")
+
+	e.clock = t0.Add(17 * time.Minute)
+	if err := e.sw.StartNow(); err != nil {
+		t.Fatal(err)
+	}
+	e.at(17 * time.Minute)
+	e.want("solo", "main", "backup")
+	st := e.sw.Status()
+	if st.Until == nil || !st.Until.Equal(t0.Add(27*time.Minute)) || st.Next == nil || !st.Next.Equal(t0.Add(47*time.Minute)) {
+		t.Fatalf("status = %+v", st)
+	}
+	e.at(27 * time.Minute)
+	e.want("main", "backup")
+	e.at(30 * time.Minute) // :30 no longer starts a period
+	e.want("main", "backup")
+	e.at(47 * time.Minute)
+	e.want("solo", "main", "backup")
+
+	e.sw = e.restart()
+	e.at(57 * time.Minute)
+	e.want("main", "backup")
+	if next := e.sw.Status().Next; next == nil || !next.Equal(t0.Add(77*time.Minute)) {
+		t.Fatalf("next period after a restart: %v", next)
+	}
+	if ev := e.ev.List(0); !strings.Contains(eventTypes(ev), "timed_restart") {
+		t.Fatalf("events: %s", eventTypes(ev))
+	}
+}
+
+// On the target already, its time there starts over.
+func TestStartNowOnTheTarget(t *testing.T) {
+	e := newEnv(t, stratumPool(t))
+	e.at(0)
+	e.at(8 * time.Minute)
+	e.want("solo", "main", "backup")
+	if err := e.sw.StartNow(); err != nil {
+		t.Fatal(err)
+	}
+	e.at(10 * time.Minute) // the old window would end here
+	e.want("solo", "main", "backup")
+	e.at(18 * time.Minute)
+	e.want("main", "backup")
+}
+
+// A pool chosen by hand ends the period's stints; starting now overrides that.
+func TestStartNowAfterAHandSwitch(t *testing.T) {
+	e := newEnv(t, stratumPool(t))
+	e.at(0)
+	if _, err := e.mgr.Activate(context.Background(), "backup", true); err != nil {
+		t.Fatal(err)
+	}
+	e.at(time.Minute)
+	e.want("backup", "solo", "main")
+	e.clock = t0.Add(2 * time.Minute)
+	if err := e.sw.StartNow(); err != nil {
+		t.Fatal(err)
+	}
+	e.at(2 * time.Minute)
+	if s := e.mgr.Snapshot(); s.Active != "solo" {
+		t.Fatalf("active %s, want solo", s.Active)
+	}
+	e.at(12 * time.Minute)
+	e.want("backup", "solo", "main")
+}
+
+func TestStartNowNeedsTimerAndTarget(t *testing.T) {
+	e := newEnv(t, stratumPool(t))
+	p, err := e.set.Prepare(map[string]json.RawMessage{"timed_switch": json.RawMessage(`"off"`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.set.Commit(p)
+	if err := e.sw.StartNow(); err != ErrOff {
+		t.Fatalf("timer off: %v", err)
+	}
+}
+
+func eventTypes(ev []events.Event) string {
+	var out []string
+	for _, e := range ev {
+		out = append(out, e.Type)
+	}
+	return strings.Join(out, " ")
 }

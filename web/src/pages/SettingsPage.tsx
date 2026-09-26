@@ -1,20 +1,42 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ApiError, api } from '../api/client'
-import { keys, useSettings } from '../api/queries'
-import type { Msg, ServerInfo, SettingMeta, SettingsPayload, SettingValue } from '../api/types'
+import { keys, usePoolNames, useSettings } from '../api/queries'
+import type { Msg, SettingMeta, SettingsPayload, SettingValue } from '../api/types'
 import { QueryState } from '../components/Panel'
 import { useConfirm, useToast } from '../context/feedback'
 import { humanValue, rangeErrors, rangeText } from '../features/settings/describe'
+import { advancedGroups, groupSummary, matches, serverGroup } from '../features/settings/groups'
+import { ServerPanel } from '../features/settings/ServerPanel'
 import { SettingControl } from '../features/settings/SettingControl'
+import { TelegramPanel } from '../features/settings/TelegramPanel'
+import { HuntPanel } from '../features/timed/HuntPanel'
+import { TimedPanel } from '../features/timed/TimedPanel'
 import { setLeaveGuard } from '../hooks/useHashRoute'
+import { useLocalState } from '../hooks/useSessionState'
 import { locale } from '../i18n'
 import { errorText, translateMsg } from '../i18n/messages'
 import { parseGoDuration } from '../lib/duration'
-import { formatDate, formatDuration } from '../lib/format'
+import { formatDuration } from '../lib/format'
 
 type Draft = Record<string, SettingValue>
+
+/** Whether the element's text is cut by its line clamp; checked again on resize. */
+function useClipped(ref: RefObject<HTMLElement | null>, text: string) {
+  const [clipped, setClipped] = useState(false)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const check = () => setClipped(el.scrollHeight > el.clientHeight + 1)
+    check()
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(check)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [ref, text])
+  return clipped
+}
 
 interface RowProps {
   meta: SettingMeta
@@ -26,8 +48,13 @@ interface RowProps {
 function SettingRow({ meta, value, error, onChange }: RowProps) {
   const { t } = useTranslation()
   const loc = locale()
+  // Long descriptions show two lines until opened.
+  const [more, setMore] = useState(false)
+  const descRef = useRef<HTMLDivElement>(null)
   const modified = value !== meta.default
   const item = `settings.items.${meta.key}`
+  const desc = t(`${item}.desc`, { defaultValue: '' })
+  const long = useClipped(descRef, desc) || more
   return (
     <div className="setting">
       <div>
@@ -55,8 +82,18 @@ function SettingRow({ meta, value, error, onChange }: RowProps) {
         </button>
         {error && <div className="field-error full">{error}</div>}
       </div>
-      <div className="desc">{t(`${item}.desc`, { defaultValue: '' })}</div>
+      <div ref={descRef} className={more ? 'desc' : 'desc clamp'}>
+        {desc}
+      </div>
       <div className="meta">
+        {long && (
+          <>
+            <button type="button" className="link" aria-expanded={more} onClick={() => setMore(!more)}>
+              {more ? t('settings.less') : t('settings.more')}
+            </button>{' '}
+            ·{' '}
+          </>
+        )}
         {t('settings.default', { value: humanValue(meta, meta.default, t, loc) })} ·{' '}
         {t('settings.allowed', { value: rangeText(meta, t, loc) })} ·{' '}
         {t('settings.applies', { value: t(`settings.appliesTo.${meta.applies}`) })}
@@ -65,67 +102,61 @@ function SettingRow({ meta, value, error, onChange }: RowProps) {
   )
 }
 
-function ServerPanel({ server }: { server: ServerInfo }) {
+interface GroupProps {
+  id: string
+  title: string
+  summary?: string
+  open: boolean
+  onToggle: () => void
+  modified: number
+  unsaved: number
+  errors: number
+  children: ReactNode
+}
+
+/** A settings group: the header opens and closes it and says what is inside. */
+function Group({ id, title, summary, open, onToggle, modified, unsaved, errors, children }: GroupProps) {
   const { t } = useTranslation()
-  const loc = locale()
-  const cert = server.certificate
-  const conn = (k: 'tcp' | 'tls') => {
-    const c = server.connections[k]
-    if (!c.enabled) return <span className="muted">{t('dashboard.listenerOff')}</span>
-    return (
-      <span className="mono wrap">
-        {c.url ?? `${c.scheme}://${t('dashboard.hostPlaceholder')}:${c.port}`}{' '}
-        <span className="muted">({t('settings.server.inContainer', { listen: c.listen })})</span>
-      </span>
-    )
-  }
   return (
-    <div className="panel">
-      <p className="small muted">{t('settings.server.help')}</p>
-      <div className="kv">
-        <span className="muted">{t('settings.server.tcp')}</span>
-        {conn('tcp')}
-        <span className="muted">{t('settings.server.tls')}</span>
-        {conn('tls')}
-        <span className="muted">{t('settings.server.certificate')}</span>
-        {cert ? (
-          <span>
-            {cert.type === 'self-signed' ? t('settings.server.certSelfSigned') : t('settings.server.certLoaded')} ·{' '}
-            {t('settings.server.certUntil', { date: formatDate(cert.not_after, loc) })}
-            {cert.dns_names?.length ? ` · ${cert.dns_names.join(', ')}` : ''}
-            <div className="mono small muted wrap">SHA-256 {cert.sha256}</div>
+    <section className="group" id={`settings-${id}`}>
+      <h3>
+        <button type="button" className="group-head" aria-expanded={open} onClick={onToggle}>
+          <span className="chev" aria-hidden="true">
+            {open ? '▾' : '▸'}
           </span>
-        ) : (
-          <span className="muted">{t('settings.server.tlsOff')}</span>
-        )}
-        <span className="muted">{t('settings.server.admin')}</span>
-        <span>
-          {server.admin_username} ·{' '}
-          {t('settings.server.apiToken', {
-            state: server.api_token_set ? t('settings.server.tokenSet') : t('settings.server.tokenNotSet'),
-          })}
-        </span>
-        <span className="muted">{t('settings.server.adminListen')}</span>
-        <span className="mono">{server.admin_listen}</span>
-        <span className="muted">{t('settings.server.dataDir')}</span>
-        <span className="mono">{server.data_dir}</span>
-        <span className="muted">{t('settings.server.logFormat')}</span>
-        <span className="mono">{server.log_format}</span>
-      </div>
-    </div>
+          <span className="name">{title}</span>
+          {summary && <span className="summary">{summary}</span>}
+          <span className="grow" />
+          {modified > 0 && (
+            <span className="count" title={t('settings.modifiedHint')}>
+              ● {modified}
+            </span>
+          )}
+          {unsaved > 0 && <span className="badge warn">{t('settings.badgeUnsaved', { count: unsaved })}</span>}
+          {errors > 0 && <span className="badge bad">{t('settings.badgeErrors', { count: errors })}</span>}
+        </button>
+      </h3>
+      {open && children}
+    </section>
   )
 }
 
 function SettingsForm({ data }: { data: SettingsPayload }) {
   const { t, i18n } = useTranslation()
+  const loc = locale()
   const qc = useQueryClient()
   const toast = useToast()
   const confirm = useConfirm()
+  const pools = usePoolNames()
   const [draft, setDraft] = useState<Draft>({})
   const [errors, setErrors] = useState<Record<string, Msg>>({})
   const [saving, setSaving] = useState(false)
+  const [opened, setOpened] = useLocalState<Record<string, boolean>>('settings.open', {})
+  const [query, setQuery] = useState('')
+  const q = query.trim().toLowerCase()
 
   const current = (m: SettingMeta) => (m.key in draft ? draft[m.key]! : m.value)
+  const byKey = new Map(data.settings.map((m) => [m.key, m]))
   const dirty = Object.keys(draft).length
   const modified = data.settings.filter((m) => current(m) !== m.default).length
 
@@ -140,6 +171,22 @@ function SettingsForm({ data }: { data: SettingsPayload }) {
       window.removeEventListener('beforeunload', onUnload)
     }
   }, [dirty, t])
+
+  const groups = data.groups.filter((g) => data.settings.some((m) => m.group === g))
+  const main = groups.filter((g) => !advancedGroups.has(g))
+  const advanced = groups.filter((g) => advancedGroups.has(g))
+  const all = [...main, ...advanced, serverGroup]
+  const title = (g: string) => (g === serverGroup ? t('settings.server.title') : t(`settings.groups.${g}`, { defaultValue: g }))
+  const isOpen = (g: string) => opened[g] ?? (!advancedGroups.has(g) && g !== serverGroup)
+  const setOpen = (list: string[], open: boolean) =>
+    setOpened((o) => ({ ...o, ...Object.fromEntries(list.map((g) => [g, open])) }))
+  const allOpen = all.every(isOpen)
+
+  const jump = (g: string) => {
+    setQuery('')
+    setOpen([g], true)
+    requestAnimationFrame(() => document.getElementById(`settings-${g}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }
 
   const change = (m: SettingMeta, v: SettingValue) =>
     setDraft((d) => {
@@ -158,7 +205,7 @@ function SettingsForm({ data }: { data: SettingsPayload }) {
   const errorFor = (m: SettingMeta) => {
     const msg = errors[m.key]
     if (!msg) return undefined
-    if (rangeErrors.has(msg.key)) return t('settings.outOfRange', { range: rangeText(m, t, locale()) })
+    if (rangeErrors.has(msg.key)) return t('settings.outOfRange', { range: rangeText(m, t, loc) })
     return translateMsg(i18n, msg)
   }
 
@@ -189,31 +236,116 @@ function SettingsForm({ data }: { data: SettingsPayload }) {
         }
       }
     } catch (err) {
-      if (err instanceof ApiError && Object.keys(err.fields).length) setErrors(err.fields)
+      if (err instanceof ApiError && Object.keys(err.fields).length) {
+        setErrors(err.fields)
+        // The groups with a wrong value open, so it can be seen.
+        setOpen(
+          Object.keys(err.fields).flatMap((k) => byKey.get(k)?.group ?? []),
+          true,
+        )
+      }
       toast(errorText(i18n, err), 'error')
     } finally {
       setSaving(false)
     }
   }
 
+  // While searching, a group shows its matching settings, or all of them
+  // when its own title matches.
+  const itemsOf = (g: string) => {
+    const items = data.settings.filter((m) => m.group === g)
+    if (!q || title(g).toLowerCase().includes(q)) return items
+    return items.filter((m) => matches(m, q, t))
+  }
+
+  const renderGroup = (g: string) => {
+    const items = itemsOf(g)
+    if (!items.length) return null
+    const inGroup = data.settings.filter((m) => m.group === g)
+    const summary = groupSummary({
+      group: g,
+      value: (k) => {
+        const m = byKey.get(k)
+        return m && current(m)
+      },
+      meta: (k) => byKey.get(k),
+      telegram: data.server.telegram,
+      t,
+      loc,
+    })
+    return (
+      <Group
+        key={g}
+        id={g}
+        title={title(g)}
+        summary={summary}
+        open={!!q || isOpen(g)}
+        onToggle={() => setOpen([g], !isOpen(g))}
+        modified={inGroup.filter((m) => current(m) !== m.default).length}
+        unsaved={inGroup.filter((m) => m.key in draft).length}
+        errors={inGroup.filter((m) => errors[m.key]).length}
+      >
+        <div className="panel">
+          {items.map((m) => (
+            <SettingRow key={m.key} meta={m} value={current(m)} error={errorFor(m)} onChange={(v) => change(m, v)} />
+          ))}
+        </div>
+        {!q && g === 'timed' && <TimedPanel pools={pools.data ?? []} />}
+        {!q && g === 'hunt' && <HuntPanel pools={pools.data ?? []} />}
+        {!q && g === 'alerts' && <TelegramPanel status={data.server.telegram} />}
+      </Group>
+    )
+  }
+
+  const found = groups.some((g) => itemsOf(g).length > 0)
+  const advancedShown = advanced.filter((g) => itemsOf(g).length > 0)
+
   return (
     <>
-      {data.groups.map((g) => {
-        const items = data.settings.filter((m) => m.group === g)
-        if (!items.length) return null
-        return (
-          <section key={g}>
-            <h2>{t(`settings.groups.${g}`, { defaultValue: g })}</h2>
-            <div className="panel">
-              {items.map((m) => (
-                <SettingRow key={m.key} meta={m} value={current(m)} error={errorFor(m)} onChange={(v) => change(m, v)} />
-              ))}
-            </div>
-          </section>
-        )
-      })}
-      <h2>{t('settings.server.title')}</h2>
-      <ServerPanel server={data.server} />
+      <div className="settings-tools">
+        <input
+          type="search"
+          className="filter"
+          placeholder={t('settings.search')}
+          aria-label={t('settings.search')}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <button type="button" className="small" disabled={!!q} onClick={() => setOpen(all, !allOpen)}>
+          {allOpen ? t('settings.collapseAll') : t('settings.expandAll')}
+        </button>
+      </div>
+      {!q && (
+        <nav className="chips" aria-label={t('settings.groupsNav')}>
+          {all.map((g) => (
+            <button key={g} type="button" className={advancedGroups.has(g) || g === serverGroup ? 'chip muted' : 'chip'} onClick={() => jump(g)}>
+              {title(g)}
+            </button>
+          ))}
+        </nav>
+      )}
+      {main.map(renderGroup)}
+      {advancedShown.length > 0 && (
+        <div className="advanced-head">
+          <h3>{t('settings.advanced')}</h3>
+          {!q && <p className="small muted">{t('settings.advancedHelp')}</p>}
+        </div>
+      )}
+      {advancedShown.map(renderGroup)}
+      {!q && (
+        <Group
+          id={serverGroup}
+          title={title(serverGroup)}
+          open={isOpen(serverGroup)}
+          onToggle={() => setOpen([serverGroup], !isOpen(serverGroup))}
+          modified={0}
+          unsaved={0}
+          errors={0}
+        >
+          <ServerPanel server={data.server} />
+        </Group>
+      )}
+      {q && !found && <div className="panel muted">{t('settings.nothingFound')}</div>}
       <div className="savebar">
         <span className="muted grow">
           {t('settings.modifiedCount', { count: modified })}

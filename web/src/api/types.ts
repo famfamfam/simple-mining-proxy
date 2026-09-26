@@ -71,6 +71,8 @@ export interface Pool {
   profit_switch: boolean
   /** Timed switching moves the farm here for part of every period; one pool at most. */
   timed_target: boolean
+  /** A solo pool: pays only for blocks the farm finds. Any role, but never profit switching. */
+  solo: boolean
   role: Role
   fallback_position?: number
   health: Health
@@ -94,6 +96,7 @@ export interface PoolInput {
   password?: string
   profit_switch?: boolean
   timed_target?: boolean
+  solo?: boolean
 }
 
 export interface TestResult {
@@ -116,14 +119,17 @@ export interface Miner {
   accepted: number
   rejected: number
   last_share: string | null
+  last_submit: string | null
   hashrate_hs: number
   connected_at: string
 }
 
+export type EventLevel = 'info' | 'warn' | 'error'
+
 export interface EventItem {
   seq: number
   time: string
-  level: 'info' | 'warn' | 'error'
+  level: EventLevel
   type: string
   message: string
 }
@@ -166,6 +172,15 @@ export interface ServerInfo {
   data_dir: string
   log_format: string
   certificate: CertInfo | null
+  telegram: TelegramStatus
+}
+
+/** The Telegram bot for alerts; configured means a bot token is set. The token itself is never returned. */
+export interface TelegramStatus {
+  configured: boolean
+  username?: string
+  error?: string
+  chats: number
 }
 
 export interface SettingsPayload {
@@ -341,4 +356,28 @@ export interface TimedStatus {
   hardness: number
   /** Why the last switch to the target failed. */
   error?: string
+  hunt: HuntStatus
+}
+
+/** Block hunting on eCash: the solo pool while a block is not harder than usual, home at every block. */
+export interface HuntStatus {
+  mode: 'off' | 'on'
+  /** The eCash solo pool; "" when there is none. */
+  target: string
+  /** eCash blocks are seen as they arrive; without that hunting waits. */
+  live: boolean
+  /** How many times harder than its header a block is now. */
+  hardness: number
+  /** Hunting now: since when and the pool it returns to. */
+  since?: string
+  home?: string
+  /** A pool was chosen by hand: hunting waits for the next block. */
+  hold: boolean
+  /** The last 24 hours, the current hunt too. */
+  stints: number
+  seconds: number
+  /** Why the last switch to the hunt pool failed. */
+  error?: string
+  /** Paused after that failure until then. */
+  retry?: string
 }

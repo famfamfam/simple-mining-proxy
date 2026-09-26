@@ -12,6 +12,8 @@
   --ok-bg: #e5f6ec;
   --warn-bg: #fff4e0;
   --bad-bg: #fde8e8;
+  --solo: #6b3fc4;
+  --solo-bg: #efe8fb;
   --chip: #eef1f6;
   --radius: 8px;
   /* Chart series in fixed order; checked for color-vision separation on
@@ -44,6 +46,8 @@
     --ok-bg: #173325;
     --warn-bg: #3a2c12;
     --bad-bg: #3d1c1c;
+    --solo: #b69cf5;
+    --solo-bg: #2c2340;
     --chip: #262b35;
     --series-1: #3987e5;
     --series-2: #d95926;
@@ -223,6 +227,14 @@ nav a.active {
   min-height: 1.4em;
 }
 
+/* Text on the left, a button on the right; wraps on narrow screens. */
+.split {
+  display: flex;
+  gap: 8px 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
 .toolbar {
   display: flex;
   gap: 8px;
@@ -391,6 +403,11 @@ select.lang {
 .badge.accent {
   background: var(--accent);
   color: var(--accent-text);
+}
+
+.badge.solo {
+  background: var(--solo-bg);
+  color: var(--solo);
 }
 
 .lvl-ok {
@@ -735,6 +752,113 @@ td.actions-cell .actions {
   font-size: 12px;
 }
 
+.setting .meta button.link {
+  font-size: 12px;
+}
+
+/* Long descriptions show two lines until opened. */
+.setting .desc.clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+/* ---------- settings groups ---------- */
+
+.settings-tools {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 12px 0 8px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.chips button.chip {
+  padding: 3px 10px;
+  font-size: 12.5px;
+  background: var(--chip);
+  border-color: transparent;
+}
+
+.chips button.chip.muted {
+  color: var(--muted);
+}
+
+.group {
+  /* Below the sticky top bar when jumped to. */
+  scroll-margin-top: 64px;
+}
+
+.group h3 {
+  margin: 18px 0 8px;
+  font-size: 15px;
+}
+
+.group > .panel + .panel {
+  margin-top: 10px;
+}
+
+button.group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  width: 100%;
+  padding: 2px 0;
+  border: none;
+  background: none;
+  font-weight: 600;
+  text-align: left;
+}
+
+button.group-head:hover:not(:disabled) .name {
+  color: var(--accent);
+}
+
+.group-head .chev {
+  width: 12px;
+  color: var(--muted);
+}
+
+.group-head .summary {
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.group-head .count {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--accent);
+}
+
+.group-head .badge {
+  font-weight: 400;
+}
+
+.advanced-head {
+  margin-top: 28px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.advanced-head h3 {
+  margin: 0 0 2px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
 .field-error.full {
   width: 100%;
 }
@@ -1059,6 +1183,19 @@ td.actions-cell .actions {
 
   .savebar {
     padding: 8px 10px;
+  }
+
+  /* One scrolling row of group chips instead of several lines. */
+  .chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+
+  .chips button.chip {
+    flex: none;
+    white-space: nowrap;
   }
 
   .savebar .grow {

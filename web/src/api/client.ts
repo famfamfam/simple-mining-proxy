@@ -3,6 +3,7 @@ import type {
   ApiErrorBody,
   DrainResult,
   EventItem,
+  EventLevel,
   History,
   Miner,
   Msg,
@@ -14,6 +15,7 @@ import type {
   SettingsSaved,
   SettingValue,
   Status,
+  TelegramStatus,
   TestResult,
   TimedStatus,
   WorkerSeries,
@@ -66,8 +68,8 @@ export const api = {
 
   status: () => request<Status>('GET', 'api/status'),
   miners: () => request<{ miners: Miner[] }>('GET', 'api/miners').then((r) => r.miners),
-  events: (limit: number) =>
-    request<{ events: EventItem[] }>('GET', `api/events?limit=${limit}`).then((r) => r.events),
+  events: (limit: number, level: EventLevel = 'info') =>
+    request<{ events: EventItem[] }>('GET', `api/events?limit=${limit}&level=${level}`).then((r) => r.events),
   reconnectAll: () => request<DrainResult>('POST', 'api/miners/reconnect'),
 
   pools: () => request<{ pools: Pool[] }>('GET', 'api/pools').then((r) => r.pools),
@@ -114,4 +116,9 @@ export const api = {
   /** null resets a setting to its default. */
   saveSettings: (changes: Record<string, SettingValue | null>) =>
     request<SettingsSaved>('PUT', 'api/settings', changes),
+  /** Restarts the timer schedule now: the farm goes to the timer pool at once. */
+  timedStart: () => request<TimedStatus>('POST', 'api/timed/start'),
+  /** Sets the bot token after Telegram confirms it; "" removes it. */
+  setTelegramToken: (token: string) => request<TelegramStatus>('PUT', 'api/telegram/token', { token }),
+  testTelegram: () => request<TelegramStatus>('POST', 'api/telegram/test'),
 }

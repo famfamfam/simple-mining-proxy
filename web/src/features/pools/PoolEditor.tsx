@@ -45,6 +45,7 @@ export function PoolEditor({ pool, onClose }: { pool: Pool | null; onClose: () =
   const [reconnect, setReconnect] = useState(false)
   const [profitSwitch, setProfitSwitch] = useState(pool?.profit_switch ?? false)
   const [timedTarget, setTimedTarget] = useState(pool?.timed_target ?? false)
+  const [solo, setSolo] = useState(pool?.solo ?? false)
   const [errors, setErrors] = useState<Errors>({})
   const [schemeNote, setSchemeNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -77,8 +78,9 @@ export function PoolEditor({ pool, onClose }: { pool: Pool | null; onClose: () =
       tls,
       tls_skip_verify: tls && skipVerify,
       username,
-      profit_switch: profitSwitch,
+      profit_switch: profitSwitch && !solo,
       timed_target: timedTarget,
+      solo,
     }
     if (changePassword) body.password = password
     return body
@@ -221,13 +223,25 @@ export function PoolEditor({ pool, onClose }: { pool: Pool | null; onClose: () =
             </span>
           )}
         </Field>
-        <span className="form-label">{t('editor.profit')}</span>
+        <span className="form-label">{t('editor.solo')}</span>
         <div className="form-field">
           <label>
-            <input type="checkbox" checked={profitSwitch} onChange={(e) => setProfitSwitch(e.target.checked)} />{' '}
+            <input type="checkbox" checked={solo} onChange={(e) => setSolo(e.target.checked)} /> {t('editor.soloPool')}
+          </label>
+          <div className="small muted">{t('editor.soloHelp')}</div>
+        </div>
+        <span className="form-label">{t('editor.profit')}</span>
+        <div className="form-field">
+          <label className={solo ? 'muted' : undefined}>
+            <input
+              type="checkbox"
+              disabled={solo}
+              checked={profitSwitch && !solo}
+              onChange={(e) => setProfitSwitch(e.target.checked)}
+            />{' '}
             {t('editor.profitSwitch')}
           </label>
-          <div className="small muted">{t('editor.profitHelp')}</div>
+          <div className="small muted">{t(solo ? 'editor.profitSolo' : 'editor.profitHelp')}</div>
         </div>
         <span className="form-label">{t('editor.timed')}</span>
         <div className="form-field">

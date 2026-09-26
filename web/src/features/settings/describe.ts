@@ -16,14 +16,14 @@ export function humanValue(meta: SettingMeta, v: SettingValue, t: TFunction, loc
     if (meta.key === 'max_conn_per_ip' && v === 0) return t('settings.off')
     return formatInt(Number(v), loc) + (meta.unit ? ` ${meta.unit}` : '')
   }
-  return String(v)
+  return v === '' ? t('settings.emptyValue') : String(v)
 }
 
 /** The allowed values, from the limits the server sends plus a note. */
 export function rangeText(meta: SettingMeta, t: TFunction, loc: string): string {
   let range = ''
   if (meta.type === 'enum') range = (meta.options ?? []).map((o) => optionLabel(meta, o, t)).join(', ')
-  else if (meta.type === 'string') range = t('settings.length', { min: meta.min_len, max: meta.max_len })
+  else if (meta.type === 'string') range = t('settings.length', { min: meta.min_len ?? 0, max: meta.max_len })
   else if (meta.min !== undefined && meta.max !== undefined)
     range = `${humanValue(meta, meta.min, t, loc)} – ${humanValue(meta, meta.max, t, loc)}`
   const noteKey = `settings.items.${meta.key}.note`

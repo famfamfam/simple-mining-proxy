@@ -58,14 +58,20 @@ type WatchDeps struct {
 	// Seed returns when recent blocks arrived, newest first, for the time
 	// before the watcher saw blocks itself. Optional.
 	Seed func(ctx context.Context) ([]time.Time, error)
+	// OnBlock is called when a block arrives, outside the watcher's lock.
+	// Optional.
+	OnBlock func()
 }
 
 func NewWatcher(d WatchDeps) *Watcher { return &Watcher{d: d, now: time.Now} }
 
 // pick is the pool to watch: the timed target if it mines eCash, else the
-// first eCash pool.
+// first eCash solo pool (the one block hunting goes to), else the first
+// eCash pool. Any eCash pool shows the same blocks; preferring the pool that
+// timed switching and block hunting go to (timed.huntTarget) just keeps one
+// connection to the pool the farm uses, rather than to another one.
 func (w *Watcher) pick() (state.Pool, bool) {
-	var first *state.Pool
+	var solo, first *state.Pool
 	for _, p := range w.d.Pools.Snapshot().Pools {
 		if p.Coin != Coin || len(p.Addresses) == 0 {
 			continue
@@ -73,14 +79,20 @@ func (w *Watcher) pick() (state.Pool, bool) {
 		if p.TimedTarget {
 			return p, true
 		}
+		if p.Solo && solo == nil {
+			solo = &p
+		}
 		if first == nil {
 			first = &p
 		}
 	}
-	if first == nil {
-		return state.Pool{}, false
+	switch {
+	case solo != nil:
+		return *solo, true
+	case first != nil:
+		return *first, true
 	}
-	return *first, true
+	return state.Pool{}, false
 }
 
 func same(a, b state.Pool) bool {
@@ -248,9 +260,9 @@ func (w *Watcher) job(raw json.RawMessage) {
 	}
 	now := w.now()
 	w.mu.Lock()
-	defer w.mu.Unlock()
 	w.updated = now
-	if w.prevhash != "" && prev != w.prevhash {
+	block := w.prevhash != "" && prev != w.prevhash
+	if block {
 		w.arrivals = append([]time.Time{now}, w.arrivals[:min(len(w.arrivals), Blocks-1)]...)
 	}
 	w.prevhash = prev
@@ -259,6 +271,18 @@ func (w *Watcher) job(raw json.RawMessage) {
 			w.nbits = uint32(bits)
 		}
 	}
+	w.mu.Unlock()
+	if block && w.d.OnBlock != nil {
+		w.d.OnBlock()
+	}
+}
+
+// Live reports whether blocks are seen as they arrive: logged in, with a job
+// to tell the next block by. Block hunting needs it to know when to leave.
+func (w *Watcher) Live() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.connected && w.prevhash != ""
 }
 
 // known reports whether the block times describe the chain now.

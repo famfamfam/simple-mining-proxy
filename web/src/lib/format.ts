@@ -24,6 +24,16 @@ export function formatHashrateHs(hs: number): string {
   return formatHashrate(hs / 1e12)
 }
 
+/** How many times harder: 1.2, 3.4, 25, 817. */
+export function formatFactor(x: number, loc: string): string {
+  return x.toLocaleString(loc, { maximumFractionDigits: x < 10 ? 1 : 0 })
+}
+
+/** Whole US dollars: 264712.4 → "$264,712". */
+export function formatUSD(v: number, loc: string): string {
+  return v.toLocaleString(loc, { style: 'currency', currency: 'USD', currencyDisplay: 'narrowSymbol', maximumFractionDigits: 0 })
+}
+
 /** Share difficulty in short form: 524288 → 524.3K. */
 export function formatDifficulty(d: number): string {
   if (!d) return '—'

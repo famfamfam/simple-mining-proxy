@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -29,6 +30,7 @@ type Config struct {
 	PublicTCPPort      int
 	PublicTLSPort      int
 	LogFormat          string
+	TelegramAPIURL     string // Bot API server; the bot token is set in the admin UI
 }
 
 // LogValue keeps secrets out of logs.
@@ -39,6 +41,7 @@ func (c *Config) LogValue() slog.Value {
 		slog.String("admin", c.AdminAddr),
 		slog.String("admin_user", c.AdminUsername),
 		slog.Bool("api_token_set", c.APIToken != ""),
+		slog.String("telegram_api", c.TelegramAPIURL),
 		slog.String("data_dir", c.DataDir),
 	)
 }
@@ -76,6 +79,9 @@ func Load() (*Config, error) {
 		DataDir:        env("DATA_DIR", "/data"),
 		PublicHost:     env("PUBLIC_HOST", ""),
 		LogFormat:      strings.ToLower(env("LOG_FORMAT", "json")),
+		// Another Bot API server: a local one, or a mirror where
+		// api.telegram.org is blocked.
+		TelegramAPIURL: strings.TrimRight(env("TELEGRAM_API_URL", "https://api.telegram.org"), "/"),
 	}
 	c.TLSCertFile = env("TLS_CERT_FILE", filepath.Join(c.DataDir, "certs", "fullchain.pem"))
 	c.TLSKeyFile = env("TLS_KEY_FILE", filepath.Join(c.DataDir, "certs", "privkey.pem"))
@@ -93,6 +99,9 @@ func Load() (*Config, error) {
 	}
 	if c.LogFormat != "json" && c.LogFormat != "text" {
 		errs = append(errs, fmt.Errorf("LOG_FORMAT must be json or text, got %q", c.LogFormat))
+	}
+	if u, err := url.Parse(c.TelegramAPIURL); err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+		errs = append(errs, fmt.Errorf("TELEGRAM_API_URL must be an http(s) URL, got %q", c.TelegramAPIURL))
 	}
 	var err error
 	if c.PublicTCPPort, err = port("PUBLIC_TCP_PORT"); err != nil {

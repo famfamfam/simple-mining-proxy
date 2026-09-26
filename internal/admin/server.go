@@ -3,6 +3,7 @@ package admin
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/famfamfam/simple-mining-proxy/internal/apierr"
@@ -25,6 +27,7 @@ import (
 	"github.com/famfamfam/simple-mining-proxy/internal/settings"
 	"github.com/famfamfam/simple-mining-proxy/internal/state"
 	"github.com/famfamfam/simple-mining-proxy/internal/stats"
+	"github.com/famfamfam/simple-mining-proxy/internal/telegram"
 	"github.com/famfamfam/simple-mining-proxy/internal/timed"
 	"github.com/famfamfam/simple-mining-proxy/internal/tlsutil"
 	"github.com/famfamfam/simple-mining-proxy/web"
@@ -41,6 +44,7 @@ type Deps struct {
 	Profit   *profit.Switcher
 	Timed    *timed.Switcher
 	RTT      *rtt.Watcher // eCash real-time target, for the network panel
+	Telegram *telegram.Bot
 	Events   *events.Log
 	Certs    *tlsutil.Certs // nil when the TLS listener is off
 	Started  time.Time
@@ -78,6 +82,7 @@ func New(d Deps) http.Handler {
 	api("GET /api/profit", s.profitStatus)
 	api("POST /api/profit/check", s.profitCheck)
 	api("GET /api/timed", s.timedStatus)
+	api("POST /api/timed/start", s.timedStart)
 	api("GET /api/network", s.network)
 	api("GET /api/pools", s.listPools)
 	api("POST /api/pools", s.createPool)
@@ -89,6 +94,8 @@ func New(d Deps) http.Handler {
 	api("PUT /api/fallback", s.setFallback)
 	api("GET /api/settings", s.getSettings)
 	api("PUT /api/settings", s.putSettings)
+	api("PUT /api/telegram/token", s.telegramToken)
+	api("POST /api/telegram/test", s.telegramTest)
 	unknownAPI := func(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, apierr.NotFound(apierr.M("api_not_found", "unknown API endpoint")))
 	}
@@ -295,13 +302,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (s *Server) miners(w http.ResponseWriter, r *http.Request) error {
-	now := time.Now()
-	list := s.d.Registry.List()
-	out := make([]session.Info, 0, len(list))
-	for _, x := range list {
-		out = append(out, x.Info(now))
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"miners": out})
+	writeJSON(w, http.StatusOK, map[string]any{"miners": s.d.Registry.Infos(time.Now())})
 	return nil
 }
 
@@ -318,7 +319,14 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) error {
 			limit = n
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"events": s.d.Events.List(limit)})
+	level := r.URL.Query().Get("level")
+	if level == "" {
+		level = "info"
+	}
+	if !events.ValidLevel(level) {
+		return apierr.Validation(apierr.M("events_level", "level must be info, warn or error"), nil)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"events": s.d.Events.ListAt(limit, level)})
 	return nil
 }
 
@@ -455,6 +463,21 @@ func (s *Server) timedStatus(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
+// timedStart restarts the timer schedule now: the farm goes to the timer
+// pool without waiting for the next period.
+func (s *Server) timedStart(w http.ResponseWriter, r *http.Request) error {
+	switch err := s.d.Timed.StartNow(); {
+	case errors.Is(err, timed.ErrOff):
+		return apierr.Conflict(apierr.M("timed_off", "timed switching is off: turn it on in the settings"))
+	case errors.Is(err, timed.ErrNoTarget):
+		return apierr.Conflict(apierr.M("timed_no_target", "no pool is marked for timed switching"))
+	case err != nil:
+		return err
+	}
+	writeJSON(w, http.StatusOK, s.d.Timed.Status())
+	return nil
+}
+
 // ---- pools ----
 
 type poolView struct {
@@ -468,6 +491,7 @@ type poolView struct {
 	PasswordSet      bool       `json:"password_set"`
 	ProfitSwitch     bool       `json:"profit_switch"`
 	TimedTarget      bool       `json:"timed_target"`
+	Solo             bool       `json:"solo"`
 	Role             string     `json:"role"`
 	FallbackPosition int        `json:"fallback_position,omitempty"`
 	Health           string     `json:"health"`
@@ -507,7 +531,7 @@ func (s *Server) poolView(p state.Pool, snap *pool.Snapshot, counts session.Coun
 	h := s.d.Pools.Health(p.ID)
 	v := poolView{
 		ID: p.ID, Name: p.Name, Coin: p.Coin, TLS: p.TLS,
-		TLSSkipVerify: p.TLSSkipVerify, Username: p.Username, PasswordSet: p.Password != "", ProfitSwitch: p.ProfitSwitch, TimedTarget: p.TimedTarget,
+		TLSSkipVerify: p.TLSSkipVerify, Username: p.Username, PasswordSet: p.Password != "", ProfitSwitch: p.ProfitSwitch, TimedTarget: p.TimedTarget, Solo: p.Solo,
 		Health: string(h.Status), Sessions: counts.ByPool[p.ID],
 		Accepted: st.ByPool[p.ID].Accepted, Rejected: st.ByPool[p.ID].Rejected,
 		HashrateTHs: st.PoolHashrateHs[p.ID] / 1e12,
@@ -716,6 +740,7 @@ func (s *Server) settingsPayload() map[string]any {
 		"data_dir":       c.DataDir,
 		"log_format":     c.LogFormat,
 		"certificate":    nil,
+		"telegram":       s.telegramStatus(),
 	}
 	if s.d.Certs != nil {
 		server["certificate"] = s.d.Certs.Info()
@@ -733,6 +758,91 @@ func (s *Server) settingsPayload() map[string]any {
 		"modified": modified,
 		"server":   server,
 	}
+}
+
+type telegramView struct {
+	telegram.Status
+	Chats int `json:"chats"`
+}
+
+func (s *Server) telegramStatus() telegramView {
+	return telegramView{Status: s.d.Telegram.Status(), Chats: len(telegram.ChatIDs(s.d.Settings.Get().TelegramChats))}
+}
+
+var errNoTelegramToken = apierr.Conflict(apierr.M("telegram_no_token", "set the Telegram bot token first"))
+
+// telegramToken sets the bot token after Telegram has confirmed it, or
+// removes it with an empty token. The token is never returned.
+func (s *Server) telegramToken(w http.ResponseWriter, r *http.Request) error {
+	if s.d.Telegram == nil {
+		return errNoTelegramToken
+	}
+	var body struct {
+		Token *string `json:"token"`
+	}
+	if err := decode(r, &body); err != nil {
+		return err
+	}
+	if body.Token == nil {
+		return apierr.Validation(apierr.M("telegram_token_required", `"token" is required; send "" to remove the token`),
+			map[string]apierr.Msg{"token": apierr.M("required", "required")})
+	}
+	token := strings.TrimSpace(*body.Token)
+	username := ""
+	if token != "" {
+		if !telegram.ValidToken(token) {
+			msg := apierr.M("telegram_token_format", "this is not a bot token: it looks like 123456789:AA… from @BotFather")
+			return apierr.Validation(msg, map[string]apierr.Msg{"token": msg})
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+		defer cancel()
+		name, err := s.d.Telegram.Check(ctx, token)
+		switch {
+		case telegram.IsRejected(err):
+			return &apierr.Error{Status: http.StatusUnprocessableEntity, Code: "telegram_token_rejected",
+				Msg: apierr.M("telegram_token_rejected", "Telegram rejected the token: {error}", "error", err.Error())}
+		case err != nil:
+			return &apierr.Error{Status: http.StatusBadGateway, Code: "telegram_unreachable",
+				Msg: apierr.M("telegram_unreachable", "cannot reach Telegram to check the token: {error}", "error", err.Error())}
+		}
+		username = name
+	}
+	err := s.d.State.Mutate(func(f *state.File) error {
+		f.TelegramToken = token
+		return nil
+	}, func(*state.File) { s.d.Telegram.SetToken(token, username) })
+	if err != nil {
+		return apierr.Internal(apierr.M("state_save_failed", "cannot save state.json: {error}", "error", err.Error()))
+	}
+	if token == "" {
+		s.d.Events.Info("telegram_token", "Telegram bot token removed: alerts go to the events only")
+	} else {
+		s.d.Events.Info("telegram_token", "Telegram bot set: @%s", username)
+	}
+	writeJSON(w, http.StatusOK, s.telegramStatus())
+	return nil
+}
+
+// telegramTest sends a test message to every Telegram chat.
+func (s *Server) telegramTest(w http.ResponseWriter, r *http.Request) error {
+	if s.d.Telegram == nil {
+		return errNoTelegramToken
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	defer cancel()
+	err := s.d.Telegram.Test(ctx)
+	if errors.Is(err, telegram.ErrNoToken) {
+		return errNoTelegramToken
+	}
+	if errors.Is(err, telegram.ErrNoChats) {
+		return apierr.Conflict(apierr.M("telegram_no_chats", "no Telegram chats: add a chat id to telegram_chats"))
+	}
+	if err != nil {
+		return &apierr.Error{Status: http.StatusBadGateway, Code: "telegram_failed",
+			Msg: apierr.M("telegram_failed", "Telegram did not take the message: {error}", "error", err.Error())}
+	}
+	writeJSON(w, http.StatusOK, s.telegramStatus())
+	return nil
 }
 
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) error {

@@ -53,6 +53,10 @@ type Pool struct {
 	// TimedTarget is the pool timed switching moves the farm to for part of
 	// every period, e.g. a solo pool. At most one pool has it.
 	TimedTarget bool `json:"timed_target,omitempty"`
+	// Solo marks a solo pool: it pays only for the blocks the farm finds.
+	// It can be active, a fallback or the timed target, but profit switching
+	// never picks it: comparing coins would move the whole farm to a lottery.
+	Solo bool `json:"solo,omitempty"`
 }
 
 // UnmarshalJSON also reads the version-1 form with a single host and port.
@@ -102,6 +106,9 @@ func PoolFieldErrors(p Pool) map[string]apierr.Msg {
 	}
 	if p.TLSSkipVerify && !p.TLS {
 		errs["tls_skip_verify"] = apierr.M("pool_skip_verify", "only allowed with TLS")
+	}
+	if p.Solo && p.ProfitSwitch {
+		errs["profit_switch"] = apierr.M("pool_solo_profit", "a solo pool cannot take part in profit switching")
 	}
 	return errs
 }
@@ -164,6 +171,9 @@ type File struct {
 	FallbackPools []string                   `json:"fallback_pools"`
 	Pools         []Pool                     `json:"pools"`
 	Settings      map[string]json.RawMessage `json:"settings"`
+	// TelegramToken is the token of the alert bot, a secret like the pool
+	// passwords: the API never returns it. Older builds ignore the field.
+	TelegramToken string `json:"telegram_token,omitempty"`
 }
 
 func (f *File) Pool(id string) (*Pool, bool) {

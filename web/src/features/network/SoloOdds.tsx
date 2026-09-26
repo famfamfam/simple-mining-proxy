@@ -1,8 +1,18 @@
 import { useTranslation } from 'react-i18next'
 import type { CoinView, NetworkStatus, Pool, RttStatus, TimedStatus } from '../../api/types'
+import { SoloBadge } from '../../components/Badges'
 import { locale } from '../../i18n'
 import { parseGoDuration } from '../../lib/duration'
-import { formatAgo, formatChance, formatDifficulty, formatDuration, formatHashrateHs, formatLongDuration } from '../../lib/format'
+import {
+  formatAgo,
+  formatChance,
+  formatDifficulty,
+  formatDuration,
+  formatFactor,
+  formatHashrateHs,
+  formatLongDuration,
+  formatUSD,
+} from '../../lib/format'
 import { blockChance, blockRate } from '../../lib/odds'
 
 const hour = 3600
@@ -21,6 +31,7 @@ export function SoloOdds({ network, hashrateTHs, pools, timed }: SoloOddsProps) 
   const loc = locale()
   const hs = hashrateTHs * 1e12
   const mined = new Set(pools.map((p) => p.coin).filter(Boolean))
+  const solo = new Set(pools.filter((p) => p.solo).map((p) => p.coin))
   // Coins of the configured pools first, then the rest in revenue order.
   const coins = [...network.coins].sort((a, b) => Number(mined.has(b.tag)) - Number(mined.has(a.tag)))
 
@@ -64,6 +75,7 @@ export function SoloOdds({ network, hashrateTHs, pools, timed }: SoloOddsProps) 
                 <tr key={c.tag} className={mined.has(c.tag) ? undefined : 'muted'}>
                   <td className="primary">
                     <b>{c.tag}</b> {mined.has(c.tag) && <span className="badge">{t('network.mined')}</span>}{' '}
+                    {solo.has(c.tag) && <SoloBadge />}{' '}
                     {eff(c) < 1 && (
                       <span className="badge warn" title={t('network.rttHint', { pct: Math.round(eff(c) * 100) })}>
                         RTT
@@ -79,16 +91,7 @@ export function SoloOdds({ network, hashrateTHs, pools, timed }: SoloOddsProps) 
                   </td>
                   <td data-label={t('network.reward')} className="num">
                     {c.block_reward.toLocaleString(loc, { maximumSignificantDigits: 5 })} {c.tag}
-                    {c.price_usd > 0 && (
-                      <div className="small muted">
-                        {(c.block_reward * c.price_usd).toLocaleString(loc, {
-                          style: 'currency',
-                          currency: 'USD',
-                          currencyDisplay: 'narrowSymbol',
-                          maximumFractionDigits: 0,
-                        })}
-                      </div>
-                    )}
+                    {c.price_usd > 0 && <div className="small muted">{formatUSD(c.block_reward * c.price_usd, loc)}</div>}
                   </td>
                   <td data-label={t('network.hour')} className="num">
                     {hs > 0 ? chance(c, hour) : '—'}
@@ -144,7 +147,7 @@ function RealTime({ rtt, difficulty }: { rtt: RttStatus; difficulty: number }) {
       {hard
         ? t('network.rttNow', {
             difficulty: formatDifficulty(difficulty * rtt.factor),
-            factor: rtt.factor.toLocaleString(loc, { maximumFractionDigits: rtt.factor < 10 ? 1 : 0 }),
+            factor: formatFactor(rtt.factor, loc),
           })
         : t('network.rttEasy')}
       {rtt.last_block && ` · ${t('network.lastBlock', { ago: formatAgo(rtt.last_block, t) })}`}

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
 import { useEvents, useHistory, useNetwork, usePools, useProfit, useStatus, useTimed } from '../api/queries'
 import type { ConnString, Pool, Status } from '../api/types'
-import { HealthBadge, ModeBadge } from '../components/Badges'
+import { HealthBadge, ModeBadge, SoloBadge } from '../components/Badges'
 import { CopyButton } from '../components/CopyButton'
 import { QueryState, StatCard } from '../components/Panel'
 import { TimeChart } from '../components/TimeChart'
@@ -14,17 +14,20 @@ import { SoloOdds } from '../features/network/SoloOdds'
 import { ProfitPanel } from '../features/profit/ProfitPanel'
 import { TestDialog } from '../features/pools/TestDialog'
 import { usePoolActions } from '../features/pools/usePoolActions'
+import { HuntPanel } from '../features/timed/HuntPanel'
+import { TimedPanel } from '../features/timed/TimedPanel'
 import { href } from '../hooks/useHashRoute'
 import { locale } from '../i18n'
-import { parseGoDuration } from '../lib/duration'
-import { formatDateTime, formatDuration, formatHashrate, formatHashrateHs, formatInt, formatPercent, formatTime } from '../lib/format'
+import { formatDateTime, formatHashrate, formatHashrateHs, formatInt, formatPercent } from '../lib/format'
+import { poolNameIn } from '../lib/pools'
 import { EventList } from './EventsPage'
 
 function StatusCards({ status, pools }: { status: Status; pools: Pool[] }) {
   const { t } = useTranslation()
   const loc = locale()
-  const name = (id: string) => pools.find((p) => p.id === id)?.name ?? (id || '—')
+  const name = (id: string) => poolNameIn(pools, id) || '—'
   const active = pools.find((p) => p.id === status.active_pool)
+  const effective = pools.find((p) => p.id === status.effective_pool)
   const ls = status.last_switch
   const { accepted, rejected } = status.shares
   return (
@@ -33,9 +36,11 @@ function StatusCards({ status, pools }: { status: Status; pools: Pool[] }) {
         label={t('dashboard.mode')}
         value={<ModeBadge mode={status.mode} />}
         sub={
-          status.effective_pool && status.effective_pool !== status.active_pool
-            ? t('dashboard.newSessionsTo', { pool: name(status.effective_pool) })
-            : undefined
+          status.effective_pool && status.effective_pool !== status.active_pool ? (
+            <>
+              {t('dashboard.newSessionsTo', { pool: name(status.effective_pool) })} {effective?.solo && <SoloBadge />}
+            </>
+          ) : undefined
         }
       />
       <StatCard
@@ -49,7 +54,15 @@ function StatusCards({ status, pools }: { status: Status; pools: Pool[] }) {
             '—'
           )
         }
-        sub={active ? <HealthBadge health={active.health} /> : t('dashboard.addPoolHint')}
+        sub={
+          active ? (
+            <>
+              <HealthBadge health={active.health} /> {active.solo && <SoloBadge />}
+            </>
+          ) : (
+            t('dashboard.addPoolHint')
+          )
+        }
       />
       <StatCard
         label={t('dashboard.miners')}
@@ -96,41 +109,6 @@ function NetworkSection({ pools, hashrateTHs }: { pools: Pool[]; hashrateTHs: nu
       <h2>{t('network.title')}</h2>
       <SoloOdds network={network.data} hashrateTHs={hashrateTHs} pools={pools} timed={timed.data} />
     </>
-  )
-}
-
-/** Timed switching, shown only when it is on. */
-function TimedPanel({ pools }: { pools: Pool[] }) {
-  const { t } = useTranslation()
-  const loc = locale()
-  const timed = useTimed()
-  const s = timed.data
-  if (!s || s.mode === 'off') return null
-  const name = (id: string) => pools.find((p) => p.id === id)?.name ?? id
-  let text: string
-  if (!s.target) {
-    text = t('timed.noTarget')
-  } else if (s.home && s.until) {
-    text = t('timed.now', { pool: name(s.target), until: formatTime(s.until, loc), home: name(s.home) })
-  } else if (s.waiting) {
-    text = t('timed.waiting', {
-      pool: name(s.target),
-      factor: s.hardness.toLocaleString(loc, { maximumFractionDigits: s.hardness < 10 ? 1 : 0 }),
-      left: formatDuration(s.left, t),
-    })
-  } else {
-    text = t('timed.plan', {
-      pool: name(s.target),
-      length: formatDuration(parseGoDuration(s.duration), t),
-      every: formatDuration(parseGoDuration(s.period), t),
-      next: formatTime(s.next, loc),
-    })
-  }
-  return (
-    <div className="panel timed">
-      <span className={s.home ? 'badge accent' : 'badge'}>{t('timed.badge')}</span> {text}
-      {s.error && <div className="warnbox">{t('timed.failed', { error: s.error })}</div>}
-    </div>
   )
 }
 
@@ -238,6 +216,7 @@ export function DashboardPage() {
             <div className="panel muted">{t('dashboard.noPools')}</div>
           )}
           <TimedPanel pools={pools.data} />
+          <HuntPanel pools={pools.data} />
 
           <ProfitSection pools={pools.data} hashrateTHs={status.data.hashrate_ths} onSwitch={(p) => void actions.switchPool(p)} />
           <NetworkSection pools={pools.data} hashrateTHs={status.data.hashrate_ths} />

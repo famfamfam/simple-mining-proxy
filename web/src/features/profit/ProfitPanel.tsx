@@ -6,7 +6,8 @@ import type { CoinView, Pool, ProfitReport, ProfitStatus, TimedStatus } from '..
 import { useToast } from '../../context/feedback'
 import { locale } from '../../i18n'
 import { errorText } from '../../i18n/messages'
-import { formatAgo, formatDateTime, formatDifficulty, formatTime } from '../../lib/format'
+import { formatAgo, formatDateTime, formatDifficulty, formatTime, formatUSD } from '../../lib/format'
+import { poolNameIn } from '../../lib/pools'
 
 function usd(v: number, loc: string, digits = 4) {
   return v.toLocaleString(loc, {
@@ -56,11 +57,15 @@ export function ProfitPanel({ status: st, pools, hashrateTHs, onSwitch, timed }:
   const [checking, setChecking] = useState(false)
   const rep = st.report
   const reported = rep?.coins ?? [] // empty when there was no market data
-  const poolName = (id: string) => pools.find((p) => p.id === id)?.name ?? id
+  const poolName = (id: string) => poolNameIn(pools, id)
   const target = rep?.decision === 'recommend' && rep.target ? pools.find((p) => p.id === rep.target) : undefined
   const current = reported.find((c) => c.tag === rep?.active_coin)
-  // The farm is on the timer pool now; the report's coin is the one it returns to.
+  // The farm is on the timer pool or on a block hunt now; the report's coin
+  // is the one it returns to.
   const timerPool = timed?.home ? pools.find((p) => p.id === timed.target) : undefined
+  const hunt = timed?.hunt
+  const huntPool = hunt?.since ? pools.find((p) => p.id === hunt.target) : undefined
+  const away = timerPool ?? huntPool
 
   const check = async () => {
     setChecking(true)
@@ -99,6 +104,9 @@ export function ProfitPanel({ status: st, pools, hashrateTHs, onSwitch, timed }:
           {t('profit.onTimer', { pool: timerPool.name, until: formatTime(timed.until, loc), home: poolName(timed.home) })}
         </p>
       )}
+      {huntPool && hunt?.home && (
+        <p className="small">{t('profit.onHunt', { pool: huntPool.name, home: poolName(hunt.home) })}</p>
+      )}
       {rep && <Decision report={rep} poolName={poolName} />}
       {target && (
         <button type="button" className="primary small" onClick={() => onSwitch(target)}>
@@ -125,9 +133,10 @@ export function ProfitPanel({ status: st, pools, hashrateTHs, onSwitch, timed }:
                   <td className="primary">
                     <b>{c.tag}</b>{' '}
                     {c.tag === rep?.active_coin && (
-                      <span className="badge accent">{timerPool ? t('profit.homeCoin') : t('profit.current')}</span>
+                      <span className="badge accent">{away ? t('profit.homeCoin') : t('profit.current')}</span>
                     )}{' '}
-                    {timerPool && c.tag === timerPool.coin && <span className="badge warn">{t('profit.timerNow')}</span>}{' '}
+                    {timerPool && c.tag === timerPool.coin && <span className="badge warn">{t('profit.timerNow')}</span>}
+                    {huntPool && c.tag === huntPool.coin && <span className="badge solo">{t('profit.huntNow')}</span>}{' '}
                     {c.tag === rep?.best && c.tag !== rep?.active_coin && <span className="badge ok">{t('profit.best')}</span>}
                     {c.stale && <span className="badge warn">{t('profit.stale')}</span>}
                   </td>
@@ -139,6 +148,7 @@ export function ProfitPanel({ status: st, pools, hashrateTHs, onSwitch, timed }:
                   </td>
                   <td data-label={t('profit.reward')} className="num">
                     {c.block_reward.toLocaleString(loc, { maximumSignificantDigits: 5 })}
+                    {c.price_usd > 0 && <div className="small muted">{formatUSD(c.block_reward * c.price_usd, loc)}</div>}
                   </td>
                   <td data-label={t('profit.revenue')} className="num">
                     {c.revenue_usd ? usd(c.revenue_usd * 1000, loc) : `${(c.revenue_btc * 1000).toPrecision(3)} BTC`}

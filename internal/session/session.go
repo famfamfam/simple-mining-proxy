@@ -85,7 +85,8 @@ type Session struct {
 	difficulty    float64
 	accepted      uint64
 	rejected      uint64
-	lastShare     time.Time
+	lastShare     time.Time // last accepted share
+	lastSubmit    time.Time // last share the ASIC sent, whatever the pool answers
 	rate          *stats.Rate
 	logins        map[string]string   // ASIC login -> upstream user
 	pendingAuth   map[string]authInfo // request id -> authorization metadata
@@ -137,6 +138,7 @@ type Info struct {
 	Accepted     uint64     `json:"accepted"`
 	Rejected     uint64     `json:"rejected"`
 	LastShare    *time.Time `json:"last_share"`
+	LastSubmit   *time.Time `json:"last_submit"`
 	HashrateHs   float64    `json:"hashrate_hs"`
 	ConnectedAt  time.Time  `json:"connected_at"`
 }
@@ -152,6 +154,10 @@ func (s *Session) Info(now time.Time) Info {
 	if !s.lastShare.IsZero() {
 		t := s.lastShare
 		in.LastShare = &t
+	}
+	if !s.lastSubmit.IsZero() {
+		t := s.lastSubmit
+		in.LastSubmit = &t
 	}
 	return in
 }
@@ -480,6 +486,7 @@ func (s *Session) submit(line []byte, msg *stratum.Message) ([]byte, error) {
 	now := time.Now()
 
 	s.mu.Lock()
+	s.lastSubmit = now
 	user := login
 	if ok {
 		var known bool

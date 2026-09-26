@@ -104,8 +104,25 @@ func (l *Log) Throttled(key string, interval time.Duration, typ, format string, 
 	l.Warn(typ, format, args...)
 }
 
-// List returns up to limit events, newest first.
+// List returns up to limit events, newest first; limit 0 means all.
 func (l *Log) List(limit int) []Event {
+	return l.ListAt(limit, "info")
+}
+
+// levels orders the level names.
+var levels = map[string]int{"info": 0, "warn": 1, "error": 2}
+
+// ValidLevel reports whether s is a level name.
+func ValidLevel(s string) bool {
+	_, ok := levels[s]
+	return ok
+}
+
+// ListAt returns up to limit events of level min or higher, newest first;
+// limit 0 means all. Warnings stay reachable when frequent info events have
+// filled the newest part of the log.
+func (l *Log) ListAt(limit int, min string) []Event {
+	floor := levels[min]
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	n := l.next
@@ -116,9 +133,11 @@ func (l *Log) List(limit int) []Event {
 		limit = n
 	}
 	out := make([]Event, 0, limit)
-	for i := 0; i < limit; i++ {
-		idx := (l.next - 1 - i + len(l.buf)) % len(l.buf)
-		out = append(out, l.buf[idx])
+	for i := 0; i < n && len(out) < limit; i++ {
+		e := l.buf[(l.next-1-i+len(l.buf))%len(l.buf)]
+		if levels[e.Level] >= floor {
+			out = append(out, e)
+		}
 	}
 	return out
 }

@@ -407,6 +407,7 @@ type Input struct {
 	Password      *string          `json:"password"`
 	ProfitSwitch  *bool            `json:"profit_switch"`
 	TimedTarget   *bool            `json:"timed_target"`
+	Solo          *bool            `json:"solo"`
 }
 
 func apply(p *state.Pool, in Input) {
@@ -451,6 +452,9 @@ func apply(p *state.Pool, in Input) {
 	}
 	if in.TimedTarget != nil {
 		p.TimedTarget = *in.TimedTarget
+	}
+	if in.Solo != nil {
+		p.Solo = *in.Solo
 	}
 	p.Coin = strings.ToUpper(p.Coin)
 }

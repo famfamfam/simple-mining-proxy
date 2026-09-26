@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -127,11 +128,16 @@ func TestWatcherSeesBlocks(t *testing.T) {
 	xec := state.Pool{ID: "xec", Name: "XEC", Coin: "XEC", Username: "ecash:q.{worker}", Addresses: []state.Address{fakePool(t, jobs, true)}}
 	set, _, _ := settings.NewStore(nil)
 	clk := &clock{t: t0}
+	var blocks atomic.Int32
 	w := NewWatcher(WatchDeps{Settings: set, Pools: manager(t, btc, xec),
 		Seed: func(context.Context) ([]time.Time, error) {
 			return []time.Time{t0.Add(-5 * time.Minute), t0.Add(-15 * time.Minute)}, nil
-		}})
+		},
+		OnBlock: func() { blocks.Add(1) }})
 	w.now = clk.now
+	if w.Live() {
+		t.Fatal("live before connecting")
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go w.Run(ctx)
@@ -141,6 +147,9 @@ func TestWatcherSeesBlocks(t *testing.T) {
 	if st := w.Status(); st.Pool != "xec" || st.Factor != 1 || !st.LastBlock.Equal(t0.Add(-5*time.Minute)) {
 		t.Fatalf("after the seed: %+v", st)
 	}
+	if !w.Live() || blocks.Load() != 0 {
+		t.Fatalf("live %v, blocks %d after the baseline job", w.Live(), blocks.Load())
+	}
 	if d := w.Status().Difficulty; math.Abs(d/Difficulty(0x1a0ab123)-1) > 1e-12 {
 		t.Fatalf("difficulty %v", d)
 	}
@@ -148,6 +157,9 @@ func TestWatcherSeesBlocks(t *testing.T) {
 	clk.set(t0.Add(time.Minute))
 	jobs <- job("bb", "1a0ab123") // a new block arrives
 	waitFor(t, "the new block", func() bool { lb := w.Status().LastBlock; return lb != nil && lb.Equal(t0.Add(time.Minute)) })
+	if blocks.Load() != 1 {
+		t.Fatalf("OnBlock called %d times, want 1", blocks.Load())
+	}
 	clk.set(t0.Add(90 * time.Second))
 	if h := w.Hardness(); h < 100 {
 		t.Fatalf("30 s after a block: x%.1f", h)

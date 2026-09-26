@@ -30,7 +30,7 @@ const (
 )
 
 // Groups lists the setting groups in display order.
-var Groups = []string{"logins", "switching", "profit", "timed", "timeouts", "limits", "tls", "history", "logging"}
+var Groups = []string{"logins", "switching", "profit", "timed", "hunt", "alerts", "timeouts", "limits", "tls", "history", "logging"}
 
 // Values is an immutable snapshot of all runtime settings.
 type Values struct {
@@ -58,6 +58,10 @@ type Values struct {
 	TimedSwitch           string
 	TimedPeriod           time.Duration
 	TimedDuration         time.Duration
+	HuntSwitch            string
+	OfflineAfter          time.Duration
+	TelegramChats         string
+	TelegramLanguage      string
 	LogLevel              string
 }
 
@@ -72,6 +76,12 @@ const (
 const (
 	TimedOff = "off"
 	TimedOn  = "on"
+)
+
+// Block hunting modes.
+const (
+	HuntOff = "off"
+	HuntOn  = "on"
 )
 
 func (v *Values) MaxLineBytes() int { return v.MaxLineKiB * 1024 }
@@ -98,7 +108,11 @@ type Def struct {
 	set     func(*Values, any)
 }
 
-var workerPattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+var (
+	workerPattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+	// Telegram chat ids, comma-separated; group chats have negative ids.
+	chatsPattern = regexp.MustCompile(`^(-?[0-9]{1,20}(,-?[0-9]{1,20})*)?$`)
+)
 
 type binder func(d *Def)
 
@@ -206,6 +220,37 @@ var Defs = []Def{
 		Default: 10 * minute, Min: 1 * minute, Max: 12 * time.Hour,
 		Applies: AppliesImmediately,
 	}, dur(func(v *Values) *time.Duration { return &v.TimedDuration })),
+
+	// Block hunting on eCash: the farm goes to the eCash solo pool while a
+	// block is not harder than its header says, and comes back as soon as a
+	// block arrives. See the timed package.
+	def(Def{
+		Key: "hunt_switch", Group: "hunt", Type: TypeEnum,
+		Default: HuntOff, Options: []string{HuntOff, HuntOn},
+		Applies: AppliesImmediately,
+	}, str(func(v *Values) *string { return &v.HuntSwitch })),
+
+	// An ASIC that has sent no shares for this long is offline. ASICs that
+	// share rarely get a longer wait, see the monitor package.
+	def(Def{
+		Key: "offline_after", Group: "alerts", Type: TypeDuration,
+		Default: 1 * minute, Min: 30 * sec, Max: 60 * minute,
+		Applies: AppliesImmediately,
+	}, dur(func(v *Values) *time.Duration { return &v.OfflineAfter })),
+
+	// Chats that get the alerts and may use the bot commands. The bot token
+	// is a secret, kept apart in state.json (PUT /api/telegram/token).
+	def(Def{
+		Key: "telegram_chats", Group: "alerts", Type: TypeString,
+		Default: "", MinLen: 0, MaxLen: 200, Pattern: chatsPattern,
+		Applies: AppliesImmediately,
+	}, str(func(v *Values) *string { return &v.TelegramChats })),
+
+	def(Def{
+		Key: "telegram_language", Group: "alerts", Type: TypeEnum,
+		Default: "en", Options: []string{"en", "ru"},
+		Applies: AppliesImmediately,
+	}, str(func(v *Values) *string { return &v.TelegramLanguage })),
 
 	def(Def{
 		Key: "tls_handshake_timeout", Group: "timeouts", Type: TypeDuration,
