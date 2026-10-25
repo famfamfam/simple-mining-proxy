@@ -22,7 +22,11 @@ import (
 
 	"github.com/famfamfam/simple-mining-proxy/internal/events"
 	"github.com/famfamfam/simple-mining-proxy/internal/monitor"
+	"github.com/famfamfam/simple-mining-proxy/internal/pool"
+	"github.com/famfamfam/simple-mining-proxy/internal/profit"
 	"github.com/famfamfam/simple-mining-proxy/internal/settings"
+	"github.com/famfamfam/simple-mining-proxy/internal/state"
+	"github.com/famfamfam/simple-mining-proxy/internal/timed"
 )
 
 // APIURL is the Bot API server.
@@ -94,6 +98,10 @@ type Deps struct {
 	Events   *events.Log
 	Miners   func() []monitor.Miner
 	Farm     func() Farm
+	State    *state.Store
+	Pools    *pool.Manager
+	Timed    *timed.Switcher
+	Profit   *profit.Switcher
 }
 
 // Status is what the admin UI shows about the bot.
@@ -121,11 +129,12 @@ type Bot struct {
 
 	mu       sync.Mutex
 	token    string
-	changed  chan struct{}       // closed and replaced when the token changes
-	username string              // of the bot behind token, "" until known
-	menu     string              // language the command menu was set in
-	errs     [2]string           // last failure by kind: polling, sending
-	denied   map[int64]time.Time // unknown chats answered recently
+	changed  chan struct{}          // closed and replaced when the token changes
+	username string                 // of the bot behind token, "" until known
+	menu     string                 // language the command menu was set in
+	errs     [2]string              // last failure by kind: polling, sending
+	denied   map[int64]time.Time    // unknown chats answered recently
+	pending  map[int64]confirmation // one current confirmation per chat
 }
 
 func New(d Deps) *Bot {
@@ -139,7 +148,8 @@ func New(d Deps) *Bot {
 	return &Bot{
 		d: d, api: strings.TrimRight(api, "/"), token: d.Token, changed: make(chan struct{}),
 		alerts: make(chan monitor.Alert, 64), batch: batchDelay, gap: minGap, tick: sendTick, now: time.Now,
-		denied: map[int64]time.Time{},
+		denied:  map[int64]time.Time{},
+		pending: map[int64]confirmation{},
 	}
 }
 
@@ -176,6 +186,7 @@ func (b *Bot) SetToken(token, username string) {
 		return
 	}
 	b.token, b.username, b.menu, b.errs = token, username, "", [2]string{}
+	clear(b.pending)
 	close(b.changed)
 	b.changed = make(chan struct{})
 }
@@ -326,9 +337,28 @@ func (b *Bot) callWith(ctx context.Context, token, method string, in, out any) e
 
 // send sends an HTML message, waiting out Telegram's rate limit.
 func (b *Bot) send(ctx context.Context, chat int64, text string) error {
+	return b.reply(ctx, chat, 0, text, nil)
+}
+
+func (b *Bot) reply(ctx context.Context, chat, messageID int64, text string, rows [][]button) error {
+	method := "sendMessage"
+	body := map[string]any{"chat_id": chat, "text": text, "parse_mode": "HTML"}
+	if messageID != 0 {
+		method = "editMessageText"
+		body["message_id"] = messageID
+		if rows == nil {
+			rows = [][]button{}
+		}
+	}
+	if rows != nil {
+		body["reply_markup"] = map[string]any{"inline_keyboard": rows}
+	}
 	for attempt := 0; ; attempt++ {
-		err := b.call(ctx, "sendMessage", map[string]any{"chat_id": chat, "text": text, "parse_mode": "HTML"}, nil)
+		err := b.call(ctx, method, body, nil)
 		var ae *apiError
+		if messageID != 0 && errors.As(err, &ae) && ae.Code == 400 && strings.Contains(ae.Description, "message is not modified") {
+			return nil
+		}
 		if !errors.As(err, &ae) || ae.RetryAfter <= 0 || ae.RetryAfter > maxRetryAfter || attempt >= 2 {
 			return err
 		}
@@ -406,16 +436,29 @@ func sleep(ctx context.Context, d time.Duration) bool {
 
 // ---- commands ----
 
+type chatMessage struct {
+	MessageID int64 `json:"message_id"`
+	Chat      struct {
+		ID       int64  `json:"id"`
+		Title    string `json:"title"`
+		Username string `json:"username"`
+	} `json:"chat"`
+	Text string `json:"text"`
+}
+
+type callback struct {
+	ID   string `json:"id"`
+	From struct {
+		ID int64 `json:"id"`
+	} `json:"from"`
+	Message *chatMessage `json:"message"`
+	Data    string       `json:"data"`
+}
+
 type update struct {
-	UpdateID int64 `json:"update_id"`
-	Message  *struct {
-		Chat struct {
-			ID       int64  `json:"id"`
-			Title    string `json:"title"`
-			Username string `json:"username"`
-		} `json:"chat"`
-		Text string `json:"text"`
-	} `json:"message"`
+	UpdateID int64        `json:"update_id"`
+	Message  *chatMessage `json:"message"`
+	Callback *callback    `json:"callback_query"`
 }
 
 // pollLoop polls with the current token; a new token starts over with the
@@ -497,7 +540,7 @@ func (b *Bot) poll(ctx context.Context, token string, offset int64) ([]update, e
 	if lang := b.d.Settings.Get().TelegramLanguage; lang != menu {
 		tx := textsFor(lang)
 		var cmds []map[string]string
-		for _, c := range []string{"status", "miners", "help"} {
+		for _, c := range []string{"status", "pools", "auto", "events", "miners", "help"} {
 			cmds = append(cmds, map[string]string{"command": c, "description": tx.cmdDesc[c]})
 		}
 		// The menu is a nice-to-have: a failure here must not stop getUpdates
@@ -516,7 +559,7 @@ func (b *Bot) poll(ctx context.Context, token string, offset int64) ([]update, e
 	pctx, cancel := context.WithTimeout(ctx, pollWait+15*time.Second)
 	defer cancel()
 	err := b.callWith(pctx, token, "getUpdates", map[string]any{
-		"offset": offset, "timeout": int(pollWait / time.Second), "allowed_updates": []string{"message"},
+		"offset": offset, "timeout": int(pollWait / time.Second), "allowed_updates": []string{"message", "callback_query"},
 	}, &updates)
 	return updates, err
 }
@@ -536,6 +579,10 @@ func command(text, username string) string {
 }
 
 func (b *Bot) handle(ctx context.Context, u update) {
+	if u.Callback != nil {
+		b.handleCallback(ctx, u.Callback)
+		return
+	}
 	m := u.Message
 	if m == nil {
 		return
@@ -564,12 +611,15 @@ func (b *Bot) handle(ctx context.Context, u update) {
 		b.d.Events.Throttled(fmt.Sprintf("telegram_denied:%d", id), 10*time.Minute, "telegram_denied",
 			"Telegram: /%s from chat %d (%s) ignored: the chat is not in telegram_chats", cmd, id, name)
 		text = fmt.Sprintf(tx.denied, id)
-	case cmd == "status":
-		text = b.summary(tx)
-	case cmd == "miners":
-		text = b.minersText(tx)
 	default:
-		text = tx.help
+		if cmd == "start" {
+			cmd = "status"
+		}
+		text, rows := b.screen(cmd, tx)
+		if err := b.reply(ctx, id, 0, text, rows); err != nil && ctx.Err() == nil {
+			b.fail(sending, fmt.Errorf("chat %d: %w", id, err))
+		}
+		return
 	}
 	if err := b.send(ctx, id, text); err != nil && ctx.Err() == nil {
 		b.fail(sending, fmt.Errorf("chat %d: %w", id, err))
@@ -732,6 +782,24 @@ func (b *Bot) summary(tx *texts) string {
 		mode = esc(f.Mode)
 	}
 	m.line(fmt.Sprintf(tx.pool, pool, mode))
+	v := b.d.Settings.Get()
+	m.line(fmt.Sprintf(tx.ui["autoSummary"], tx.ui[v.ProfitSwitch], tx.ui[v.TimedSwitch], tx.ui[v.HuntSwitch]))
+	if b.d.Pools != nil {
+		if last := b.d.Pools.LastSwitch(); last != nil {
+			snap := b.d.Pools.Snapshot()
+			name := func(id string) string {
+				if p, ok := snap.Get(id); ok {
+					return esc(p.Name)
+				}
+				return esc(id)
+			}
+			reason := tx.ui[last.Reason]
+			if reason == "" {
+				reason = esc(last.Reason)
+			}
+			m.line(fmt.Sprintf(tx.ui["lastSwitch"], name(last.From), name(last.To), reason, tx.duration(now.Sub(last.At))))
+		}
+	}
 	if f.Timer != nil {
 		m.line(fmt.Sprintf(tx.timer, esc(f.Timer.Pool), tx.duration(f.Timer.Left)))
 	}

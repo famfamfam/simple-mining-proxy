@@ -3,13 +3,77 @@ package settings
 import (
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/famfamfam/simple-mining-proxy/internal/apierr"
+	"github.com/famfamfam/simple-mining-proxy/internal/state"
 )
 
 func raw(s string) json.RawMessage { return json.RawMessage(s) }
+
+func TestSavePersistsConcurrentChanges(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	st, err := state.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, _, err := NewStore(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for _, key := range []string{"profit_switch", "timed_switch", "hunt_switch"} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			value := `"on"`
+			if key == "profit_switch" {
+				value = `"auto"`
+			}
+			if _, err := s.Save(st, map[string]json.RawMessage{key: raw(value)}); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	reloaded, err := state.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := s.Get()
+	if v.ProfitSwitch != ProfitAuto || v.TimedSwitch != TimedOn || v.HuntSwitch != HuntOn || len(reloaded.Current().Settings) != 3 {
+		t.Fatal("concurrent changes were lost")
+	}
+	if _, err := s.Save(st, map[string]json.RawMessage{"profit_switch": raw(`"invalid"`)}); err == nil || s.Get() != v {
+		t.Fatal("invalid mode changed settings")
+	}
+}
+
+func TestSaveFailureDoesNotPublish(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	st, err := state.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The destination becomes a directory: an atomic file replacement must fail.
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	s, _, err := NewStore(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Save(st, map[string]json.RawMessage{"profit_switch": raw(`"auto"`)}); err == nil {
+		t.Fatal("save unexpectedly succeeded")
+	}
+	if s.Get().ProfitSwitch != ProfitOff || len(st.Current().Settings) != 0 {
+		t.Fatal("failed write published new values")
+	}
+}
 
 func TestDefaultsAreValid(t *testing.T) {
 	for _, d := range Defs {

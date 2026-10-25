@@ -380,7 +380,7 @@
       },
       "telegram_chats": {
         "title": "Telegram chats",
-        "desc": "Ids of the chats that get the alerts and may use the bot commands (/status, /miners), comma-separated. To learn the id, send /start to the bot from the chat (add the bot to a group first): a chat that is not on the list gets its id in the answer. Group ids start with a minus.",
+        "desc": "Ids of the chats that get alerts and may control pools and automation, comma-separated. Every member of an allowed group can use the controls. Send /start to open the button menu or learn the chat id (add the bot to a group first). Group ids start with a minus.",
         "note": "digits, a leading minus and commas, no spaces"
       },
       "telegram_language": {

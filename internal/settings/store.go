@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/famfamfam/simple-mining-proxy/internal/apierr"
+	"github.com/famfamfam/simple-mining-proxy/internal/state"
 )
 
 // Store holds the current settings snapshot. Readers call Get() on the hot
@@ -131,6 +132,21 @@ func (s *Store) Commit(p *Pending) {
 	for _, fn := range listeners {
 		fn(p.values)
 	}
+}
+
+// Save validates, persists and publishes changes under the state lock, so
+// edits from the admin UI and Telegram cannot overwrite each other.
+func (s *Store) Save(st *state.Store, changes map[string]json.RawMessage) (*Pending, error) {
+	var pending *Pending
+	err := st.Mutate(func(f *state.File) error {
+		p, err := s.Prepare(changes)
+		if err != nil {
+			return err
+		}
+		f.Settings, pending = p.Overrides, p
+		return nil
+	}, func(*state.File) { s.Commit(pending) })
+	return pending, err
 }
 
 func invalid(errs map[string]apierr.Msg) error {

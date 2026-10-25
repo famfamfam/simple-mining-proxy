@@ -155,6 +155,7 @@ func run() error {
 	var mon *monitor.Monitor
 	bot := telegram.New(telegram.Deps{
 		Token: st.Current().TelegramToken, APIURL: cfg.TelegramAPIURL, Client: httpClient, Settings: set, Events: ev,
+		State: st, Pools: mgr, Timed: timedSw, Profit: profitSw,
 		Miners: func() []monitor.Miner { return mon.Miners() },
 		Farm:   farmSummary(mgr, collector, timedSw, started),
 	})

@@ -886,16 +886,7 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) error {
 	if len(body) == 0 {
 		return apierr.Validation(apierr.M("settings_no_changes", "no changes"), nil)
 	}
-	var pending *settings.Pending
-	err := s.d.State.Mutate(func(f *state.File) error {
-		p, err := s.d.Settings.Prepare(body)
-		if err != nil {
-			return err
-		}
-		f.Settings = p.Overrides
-		pending = p
-		return nil
-	}, func(*state.File) { s.d.Settings.Commit(pending) })
+	pending, err := s.d.Settings.Save(s.d.State, body)
 	if err != nil {
 		var e *apierr.Error
 		if errors.As(err, &e) {

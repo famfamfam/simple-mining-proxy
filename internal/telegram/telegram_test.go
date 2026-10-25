@@ -150,22 +150,27 @@ const (
 )
 
 type sentMsg struct {
-	Bot  string
-	Chat int64
-	Text string
+	Bot       string
+	Chat      int64
+	Text      string
+	Method    string
+	MessageID int64
+	Rows      [][]button
 }
 
 type fakeAPI struct {
 	srv     *httptest.Server
 	updates map[string]chan map[string]any // per bot token, as in Telegram
 
-	mu      sync.Mutex
-	sent    []sentMsg
-	menus   []string
-	busy    int   // sendMessage answers 429 this many times first
-	badChat int64 // sendMessage to this chat fails: the bot is not in it
-	nextID  int64
-	bots    map[string]string // token -> bot name
+	mu        sync.Mutex
+	sent      []sentMsg
+	menus     []string
+	busy      int   // sendMessage answers 429 this many times first
+	badChat   int64 // sendMessage to this chat fails: the bot is not in it
+	nextID    int64
+	bots      map[string]string // token -> bot name
+	answers   []string
+	unchanged bool // editMessageText returns "message is not modified"
 }
 
 func newFakeAPI(t *testing.T) *fakeAPI {
@@ -194,6 +199,10 @@ func newFakeAPI(t *testing.T) *fakeAPI {
 			f.mu.Unlock()
 			reply(true)
 		case "getUpdates":
+			allowed, _ := json.Marshal(body["allowed_updates"])
+			if !strings.Contains(string(allowed), "callback_query") {
+				t.Error("callback queries are not polled")
+			}
 			var out []map[string]any
 			select {
 			case u := <-f.updates[tok]:
@@ -202,9 +211,18 @@ func newFakeAPI(t *testing.T) *fakeAPI {
 			case <-r.Context().Done():
 			}
 			reply(out)
-		case "sendMessage":
+		case "answerCallbackQuery":
+			f.mu.Lock()
+			f.answers = append(f.answers, body["text"].(string))
+			f.mu.Unlock()
+			reply(true)
+		case "sendMessage", "editMessageText":
 			f.mu.Lock()
 			defer f.mu.Unlock()
+			if method == "editMessageText" && f.unchanged {
+				fmt.Fprint(w, `{"ok":false,"error_code":400,"description":"Bad Request: message is not modified"}`)
+				return
+			}
 			if f.busy > 0 {
 				f.busy--
 				w.WriteHeader(http.StatusTooManyRequests)
@@ -217,7 +235,13 @@ func newFakeAPI(t *testing.T) *fakeAPI {
 				fmt.Fprint(w, `{"ok":false,"error_code":400,"description":"Bad Request: chat not found"}`)
 				return
 			}
-			f.sent = append(f.sent, sentMsg{Bot: bot, Chat: chat, Text: body["text"].(string)})
+			var markup struct {
+				Rows [][]button `json:"inline_keyboard"`
+			}
+			encoded, _ := json.Marshal(body["reply_markup"])
+			json.Unmarshal(encoded, &markup)
+			mid, _ := body["message_id"].(float64)
+			f.sent = append(f.sent, sentMsg{Bot: bot, Chat: chat, Text: body["text"].(string), Method: method, MessageID: int64(mid), Rows: markup.Rows})
 			reply(map[string]any{"message_id": 1})
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -326,7 +350,7 @@ func TestCommands(t *testing.T) {
 	f.message(100, "just text")
 	f.message(100, "/start")
 	got = f.waitSent(t, 3)[2]
-	if !strings.Contains(got.Text, "/status") || len(f.messages()) != 3 {
+	if !strings.Contains(got.Text, "<b>Farm</b>") || len(got.Rows) == 0 || len(f.messages()) != 3 {
 		t.Fatalf("messages = %+v", f.messages())
 	}
 	f.mu.Lock()

@@ -19,7 +19,7 @@ It was written for BTC and BCH pools. Pools for XEC, DigiByte (SHA-256) and Frac
 - Optional timed switching: part of every period on another pool, for example 10 minutes of every 30 on a solo pool. On eCash it waits out the minutes after a block, when the real-time target makes a solo block practically impossible.
 - Optional block hunting on eCash: the farm mines on an XEC solo pool only while a block is no harder than usual and comes back the moment a block is found. It runs along with the timer and profit switching.
 - Network difficulty and the farm's solo odds for every coin, with eCash's Real Time Targeting taken into account.
-- Alerts when an ASIC stops sending shares and when it comes back: in the events and, with a bot set up in the admin UI, in Telegram, where `/status` gives a short summary of the farm.
+- Telegram alerts when an ASIC stops sending shares and when it comes back, plus a button menu with farm status, checked pool switching, automation modes and recent events.
 - Runtime settings with descriptions and validation, applied without a restart.
 - A self-signed TLS certificate on first start, or your own certificate, reloaded when it changes.
 - Connection limits and timeouts against slow or broken clients.
@@ -178,7 +178,7 @@ The screen shows the everyday groups open and the technical ones (timeouts, limi
 | `timed_duration` | 10 min | 1 min – 12 h | How long it stays there in every period; shorter than `timed_period`. |
 | `hunt_switch` | off | off, on | Block hunting on eCash. |
 | `offline_after` | 1 min | 30 s – 1 h | An ASIC that sends no shares for this long is offline. |
-| `telegram_chats` | empty | chat ids, comma-separated | Chats that get the alerts and may use the bot commands. |
+| `telegram_chats` | empty | chat ids, comma-separated | Chats that get alerts and may control pools and automation. Every member of an allowed group can use the controls. |
 | `telegram_language` | en | en, ru | Language of the alerts and the bot answers. |
 | `tls_handshake_timeout` | 10 s | 1–60 s | Time a miner has to finish the TLS handshake. |
 | `first_message_timeout` | 15 s | 5 s – 2 min | Time a new connection has to send its first Stratum message. |
@@ -305,9 +305,17 @@ The bot asks Telegram for new messages itself (long polling), so the proxy needs
 
 | Command | Answer |
 |---|---|
+| `/start` | Open the farm status and button menu |
 | `/status` | Hashrate, how many ASICs are mining, the pool and its state, the timer, shares since start, the ASICs without shares |
+| `/pools` | Available pools with health, coin and solo marks; choose one to review and confirm a switch |
+| `/auto` | Profit switching (off, advice, auto), timer and XEC hunting modes |
+| `/events` | The latest eight switching events and warnings, newest first, with UTC times and original log descriptions |
 | `/miners` | Every ASIC with its hashrate, or how long it has been silent |
 | `/help` | The commands |
+
+The buttons update the same message. Pool switching requires confirmation, then checks subscribe, authorize and a usable job, just like the admin UI. A failed check keeps the configured pool unchanged; miners reconnect over `switch_drain` after success. Mode changes also require confirmation and are saved in `state.json`. Each confirmation expires after two minutes, belongs to its user and message, and works only once. Automation remains enabled after a manual pool switch unless you turn it off under Automation.
+
+Every member of a chat in `telegram_chats` can switch pools and change these modes. Add only trusted groups or use a private chat. Pool credentials, chat access, pool editing and timer intervals stay in the admin UI.
 
 The alerts are kept few. A message goes out at most once a minute and holds everything since the previous one. The first comes 10 seconds after a change, so a rack that loses power is one message. An ASIC that comes back before the message is sent is left out of it. An ASIC that has already dropped out and come back within the hour is reported at most every 15 minutes, with the state it is in then. The events keep every change.
 

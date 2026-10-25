@@ -14,6 +14,7 @@ type texts struct {
 	denied  string // chat id
 	test    string
 	cmdDesc map[string]string // command menu
+	ui      map[string]string // inline controls
 
 	offline     string // count
 	offlineLine string // name, silent for, pool
@@ -44,15 +45,23 @@ type texts struct {
 }
 
 var textsEN = texts{
+	ui: controlsEN,
 	help: "SimpleMiningProxy bot.\n\n" +
 		"/status — farm summary\n" +
+		"/pools — choose a pool\n" +
+		"/auto — automation modes\n" +
+		"/events — recent switches and warnings\n" +
 		"/miners — every ASIC\n\n" +
+		"Use the buttons below. Switching pools and changing modes require confirmation.\n" +
 		"Alerts come here when an ASIC stops sending shares and when it comes back.",
 	denied: "This chat may not use the bot. Its id is <code>%d</code>: add it in the proxy admin UI, " +
 		"Settings → Monitoring and alerts → Telegram chats.",
 	test: "✅ Test message from SimpleMiningProxy: alerts will come to this chat.",
 	cmdDesc: map[string]string{
 		"status": "Farm summary",
+		"pools":  "Choose a pool",
+		"auto":   "Automation modes",
+		"events": "Recent switches and warnings",
 		"miners": "Every ASIC",
 		"help":   "Commands",
 	},
@@ -91,15 +100,23 @@ var textsEN = texts{
 }
 
 var textsRU = texts{
+	ui: controlsRU,
 	help: "Бот SimpleMiningProxy.\n\n" +
 		"/status — сводка по ферме\n" +
+		"/pools — выбор пула\n" +
+		"/auto — режимы автоматики\n" +
+		"/events — переключения и предупреждения\n" +
 		"/miners — все асики\n\n" +
+		"Управляйте кнопками под сообщением. Переключение пулов и смена режимов требуют подтверждения.\n" +
 		"Сюда приходят оповещения, когда асик перестаёт присылать шары и когда возвращается.",
 	denied: "Этому чату бот недоступен. ID чата: <code>%d</code> — добавьте его в админке прокси: " +
 		"Настройки → Мониторинг и оповещения → Чаты Telegram.",
 	test: "✅ Тестовое сообщение от SimpleMiningProxy: оповещения будут приходить в этот чат.",
 	cmdDesc: map[string]string{
 		"status": "Сводка по ферме",
+		"pools":  "Выбор пула",
+		"auto":   "Режимы автоматики",
+		"events": "Переключения и предупреждения",
 		"miners": "Все асики",
 		"help":   "Команды",
 	},
