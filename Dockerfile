@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1
-
 # Admin UI: type check, lint, unit tests and the Vite build. Runs on the build
 # machine's architecture; the output is static files.
 FROM --platform=$BUILDPLATFORM node:24-bookworm-slim AS web
